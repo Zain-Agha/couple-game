@@ -23,14 +23,6 @@ const LEVEL_NAMES: { [key: number]: string } = {
   15: 'Deep Soulmates',
 };
 
-const BINGO_PROMPTS = [
-  'Stolen a kiss today', 'Made coffee for partner', 'Laughed until crying',
-  'Watched a movie together', 'Cooked a meal together', 'Sent a cute text',
-  'Held hands in public', 'Given a shoulder massage', 'Remembered an anniversary',
-  'Shared a dessert', 'Complimented outfit', 'Inside joke moment',
-  'Planned a date night', 'Hugged for > 10 secs', 'Bought a surprise treat', 'Said "I Love You"'
-];
-
 const playSound = (type: 'click' | 'success' | 'fanfare') => {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -85,7 +77,7 @@ const generateShortCode = () => {
 };
 
 export default function Home() {
-  const [mode, setMode] = useState<'menu' | 'create' | 'join' | 'hub' | 'quiz' | 'tictactoe' | 'bingo' | 'results'>('menu');
+  const [mode, setMode] = useState<'menu' | 'create' | 'join' | 'hub' | 'quiz' | 'tictactoe' | 'connect4' | 'results'>('menu');
   const [role, setRole] = useState<'player_a' | 'player_b' | null>(null);
   const [name, setName] = useState('');
   const [gameCodeInput, setGameCodeInput] = useState('');
@@ -102,7 +94,7 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
 
-  // Check URL parameters for direct link join
+  // Auto-fill from URL ?code=XXXXXX
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlCode = params.get('code');
@@ -130,7 +122,6 @@ export default function Home() {
           const updatedGame = payload.new;
           setGame(updatedGame);
 
-          // Route to active game type or hub
           if (updatedGame.status === 'in_hub') {
             setMode('hub');
           } else if (updatedGame.status === 'round_1' || updatedGame.status === 'round_2') {
@@ -147,8 +138,8 @@ export default function Home() {
             confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
           } else if (updatedGame.status === 'playing_tictactoe') {
             setMode('tictactoe');
-          } else if (updatedGame.status === 'playing_bingo') {
-            setMode('bingo');
+          } else if (updatedGame.status === 'playing_connect4') {
+            setMode('connect4');
           }
         }
       )
@@ -244,22 +235,19 @@ export default function Home() {
     }
   };
 
-  // 3. Select & Start Quiz Level inside Room
+  // 3. Start Quiz Level
   const handleStartQuiz = async (lvl: number) => {
     playSound('click');
     setSelectedLevel(lvl);
     await loadQuestions(lvl);
-    
-    // Clear previous round answers for new level
     await supabase.from('answers').delete().eq('game_id', game.id);
-
     await supabase
       .from('games')
       .update({ status: 'round_1', current_level: lvl, current_game_type: 'quiz' })
       .eq('id', game.id);
   };
 
-  // 4. Start Tic-Tac-Toe
+  // 4. Start Tic-Tac-Toe (X vs O)
   const handleStartTicTacToe = async () => {
     playSound('click');
     const initialTTT = { board: ["","","","","","","","",""], turn: "player_a", winner: null };
@@ -269,23 +257,23 @@ export default function Home() {
       .eq('id', game.id);
   };
 
-  // 5. Start Bingo
-  const handleStartBingo = async () => {
+  // 5. Start Connect 4 (Red vs Blue)
+  const handleStartConnect4 = async () => {
     playSound('click');
-    const initialBingo = { board_a: [], board_b: [], winner: null };
+    const initialC4 = { board: Array(42).fill(""), turn: "player_a", winner: null };
     await supabase
       .from('games')
-      .update({ status: 'playing_bingo', current_game_type: 'bingo', bingo_state: initialBingo })
+      .update({ status: 'playing_connect4', current_game_type: 'connect4', bingo_state: initialC4 })
       .eq('id', game.id);
   };
 
-  // Return to Room Hub without exiting room!
+  // Return to Room Hub
   const handleReturnToHub = async () => {
     playSound('click');
     await supabase.from('games').update({ status: 'in_hub' }).eq('id', game.id);
   };
 
-  // Explicit Exit Room (Deletes data!)
+  // Exit Room
   const handleExitRoom = async () => {
     playSound('click');
     if (game?.id) {
@@ -307,7 +295,7 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2500);
   };
 
-  // Quiz Answer Submission
+  // Quiz Answers
   const handleSubmitRoundAnswers = async () => {
     playSound('click');
     setLoading(true);
@@ -413,18 +401,17 @@ export default function Home() {
     }
   };
 
-  // Tic-Tac-Toe Move Logic
+  // Tic-Tac-Toe Move Logic (Classic ❌ vs ⭕)
   const handleTTTMove = async (index: number) => {
     if (!game?.tictactoe_state) return;
     const currentState = game.tictactoe_state;
     if (currentState.winner || currentState.board[index] !== '') return;
-    if (currentState.turn !== role) return; // Not your turn!
+    if (currentState.turn !== role) return;
 
     playSound('click');
     const newBoard = [...currentState.board];
-    newBoard[index] = role === 'player_a' ? '💖' : '💋';
+    newBoard[index] = role === 'player_a' ? '❌' : '⭕';
 
-    // Check Win
     const lines = [
       [0,1,2],[3,4,5],[6,7,8],
       [0,3,6],[1,4,7],[2,5,8],
@@ -451,45 +438,72 @@ export default function Home() {
     await supabase.from('games').update({ tictactoe_state: updatedTTT }).eq('id', game.id);
   };
 
-  // Bingo Tile Click Logic
-  const handleBingoClick = async (promptIndex: number) => {
+  // Connect 4 Drop Logic (Gravity Drop in Column 0..6)
+  const handleConnect4Drop = async (colIndex: number) => {
     if (!game?.bingo_state || game.bingo_state.winner) return;
-    playSound('click');
+    if (game.bingo_state.turn !== role) return;
 
-    const key = role === 'player_a' ? 'board_a' : 'board_b';
-    const currentList: number[] = game.bingo_state[key] || [];
-
-    let newList: number[];
-    if (currentList.includes(promptIndex)) {
-      newList = currentList.filter((i) => i !== promptIndex);
-    } else {
-      newList = [...currentList, promptIndex];
-    }
-
-    // Check BINGO (4-in-a-row)
-    const winLines = [
-      [0,1,2,3], [4,5,6,7], [8,9,10,11], [12,13,14,15], // rows
-      [0,4,8,12], [1,5,9,13], [2,6,10,14], [3,7,11,15], // cols
-      [0,5,10,15], [3,6,9,12] // diagonals
-    ];
-
-    let winner = game.bingo_state.winner;
-    for (const line of winLines) {
-      if (line.every((idx) => newList.includes(idx))) {
-        winner = role === 'player_a' ? game.player_a_name : game.player_b_name;
-        playSound('fanfare');
-        confetti({ particleCount: 120, spread: 80 });
+    const board = [...(game.bingo_state.board || Array(42).fill(''))];
+    
+    // Find lowest empty row in column
+    let placedRow = -1;
+    for (let r = 5; r >= 0; r--) {
+      const slotIdx = r * 7 + colIndex;
+      if (board[slotIdx] === '') {
+        placedRow = r;
         break;
       }
     }
 
-    const updatedBingo = {
-      ...game.bingo_state,
-      [key]: newList,
-      winner,
+    if (placedRow === -1) return; // Column full!
+
+    playSound('click');
+    const chip = role === 'player_a' ? '🔴' : '🔵';
+    const slotIdx = placedRow * 7 + colIndex;
+    board[slotIdx] = chip;
+
+    // Check Win (4 in a row)
+    const checkWin = (b: string[], symbol: string) => {
+      // Horizontal
+      for (let r = 0; r < 6; r++) {
+        for (let c = 0; c < 4; c++) {
+          if (b[r*7+c] === symbol && b[r*7+c+1] === symbol && b[r*7+c+2] === symbol && b[r*7+c+3] === symbol) return true;
+        }
+      }
+      // Vertical
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 7; c++) {
+          if (b[r*7+c] === symbol && b[(r+1)*7+c] === symbol && b[(r+2)*7+c] === symbol && b[(r+3)*7+c] === symbol) return true;
+        }
+      }
+      // Diagonal Down-Right
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 4; c++) {
+          if (b[r*7+c] === symbol && b[(r+1)*7+c+1] === symbol && b[(r+2)*7+c+2] === symbol && b[(r+3)*7+c+3] === symbol) return true;
+        }
+      }
+      // Diagonal Up-Right
+      for (let r = 3; r < 6; r++) {
+        for (let c = 0; c < 4; c++) {
+          if (b[r*7+c] === symbol && b[(r-1)*7+c+1] === symbol && b[(r-2)*7+c+2] === symbol && b[(r-3)*7+c+3] === symbol) return true;
+        }
+      }
+      return false;
     };
 
-    await supabase.from('games').update({ bingo_state: updatedBingo }).eq('id', game.id);
+    let winner = null;
+    if (checkWin(board, chip)) {
+      winner = role === 'player_a' ? game.player_a_name : game.player_b_name;
+      playSound('fanfare');
+      confetti({ particleCount: 120, spread: 80 });
+    } else if (board.every(cell => cell !== '')) {
+      winner = 'Tie';
+    }
+
+    const nextTurn = game.bingo_state.turn === 'player_a' ? 'player_b' : 'player_a';
+    const updatedC4 = { board, turn: nextTurn, winner };
+
+    await supabase.from('games').update({ bingo_state: updatedC4 }).eq('id', game.id);
   };
 
   const currentQ = questions[currentQIndex];
@@ -608,10 +622,9 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* 4. PERSISTENT ROOM HUB (PLAY MULTIPLE GAMES / LEVELS) */}
+          {/* 4. PERSISTENT ROOM HUB */}
           {mode === 'hub' && game && (
             <motion.div key="hub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6 text-center">
-              {/* Room Code & Copy Link */}
               <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
                 <span className="text-xs text-slate-400 uppercase font-semibold">Room Code</span>
                 <p className="text-3xl font-mono font-extrabold text-pink-400 tracking-widest">
@@ -625,7 +638,6 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* Connected Players */}
               <div className="flex justify-around items-center p-3 bg-slate-950/50 rounded-xl border border-slate-800/50">
                 <div className="text-center">
                   <span className="font-bold text-pink-300">{game.player_a_name || 'Waiting...'}</span>
@@ -636,16 +648,13 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* ARCADE GAME SELECTOR */}
               {game.player_a_name && game.player_b_name ? (
                 <div className="space-y-4">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Choose an Activity:</h3>
 
                   {/* GAME 1: QUIZ SELECTOR */}
                   <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl text-left space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold text-pink-400 text-sm">🧠 Couples Quiz (Levels 1-15)</span>
-                    </div>
+                    <span className="font-bold text-pink-400 text-sm block">🧠 Couples Quiz (Levels 1-15)</span>
                     <div className="grid grid-cols-3 gap-2 max-h-36 overflow-y-auto pr-1">
                       {Object.entries(LEVEL_NAMES).map(([lvlStr, title]) => {
                         const lvlNum = Number(lvlStr);
@@ -663,28 +672,28 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* GAME 2: TIC-TAC-TOE */}
+                  {/* GAME 2: CONNECT 4 */}
+                  <button
+                    onClick={handleStartConnect4}
+                    className="w-full p-4 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left flex justify-between items-center transition group"
+                  >
+                    <div>
+                      <span className="font-bold text-emerald-400 text-sm block">🔴🔵 Connect 4 (4-in-a-Row)</span>
+                      <span className="text-xs text-slate-400">Red 🔴 vs Blue 🔵 chip drop battle</span>
+                    </div>
+                    <span className="text-sm font-bold text-emerald-400 group-hover:translate-x-1 transition">Play →</span>
+                  </button>
+
+                  {/* GAME 3: TIC-TAC-TOE */}
                   <button
                     onClick={handleStartTicTacToe}
                     className="w-full p-4 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left flex justify-between items-center transition group"
                   >
                     <div>
                       <span className="font-bold text-indigo-400 text-sm block">❌⭕ Tic-Tac-Toe</span>
-                      <span className="text-xs text-slate-400">Hearts 💖 vs Kisses 💋 real-time battle</span>
+                      <span className="text-xs text-slate-400">Classic X vs O battle</span>
                     </div>
                     <span className="text-sm font-bold text-indigo-400 group-hover:translate-x-1 transition">Play →</span>
-                  </button>
-
-                  {/* GAME 3: BINGO */}
-                  <button
-                    onClick={handleStartBingo}
-                    className="w-full p-4 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left flex justify-between items-center transition group"
-                  >
-                    <div>
-                      <span className="font-bold text-emerald-400 text-sm block">🎲 Couples Bingo</span>
-                      <span className="text-xs text-slate-400">Interactive 4-in-a-row prompt battle</span>
-                    </div>
-                    <span className="text-sm font-bold text-emerald-400 group-hover:translate-x-1 transition">Play →</span>
                   </button>
 
                   <button
@@ -702,7 +711,7 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* 5. QUIZ GAME MODE */}
+          {/* 5. QUIZ MODE */}
           {mode === 'quiz' && questions.length > 0 && (
             <motion.div key="quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               {evaluating ? (
@@ -788,28 +797,26 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* 6. TIC-TAC-TOE MODE */}
+          {/* 6. TIC-TAC-TOE MODE (CLASSIC ❌ vs ⭕) */}
           {mode === 'tictactoe' && game?.tictactoe_state && (
             <motion.div key="tictactoe" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6 text-center">
               <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-                <span className="font-bold text-indigo-400 text-sm">❌⭕ Couples Tic-Tac-Toe</span>
+                <span className="font-bold text-indigo-400 text-sm">❌⭕ Tic-Tac-Toe</span>
                 <button onClick={handleReturnToHub} className="text-xs text-slate-400 hover:text-white">
                   ← Back to Hub
                 </button>
               </div>
 
-              {/* Player Symbols */}
               <div className="flex justify-around items-center text-xs font-semibold">
                 <span className={game.tictactoe_state.turn === 'player_a' ? 'text-pink-400 font-bold underline' : 'text-slate-400'}>
-                  💖 {game.player_a_name}
+                  ❌ {game.player_a_name}
                 </span>
                 <span className="text-slate-600">vs</span>
                 <span className={game.tictactoe_state.turn === 'player_b' ? 'text-indigo-400 font-bold underline' : 'text-slate-400'}>
-                  💋 {game.player_b_name}
+                  ⭕ {game.player_b_name}
                 </span>
               </div>
 
-              {/* Status Message */}
               {game.tictactoe_state.winner ? (
                 <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 font-bold text-sm">
                   {game.tictactoe_state.winner === 'Tie'
@@ -824,14 +831,13 @@ export default function Home() {
                 </div>
               )}
 
-              {/* 3x3 Grid */}
               <div className="grid grid-cols-3 gap-3 max-w-[280px] mx-auto">
                 {game.tictactoe_state.board.map((symbol: string, idx: number) => (
                   <button
                     key={idx}
                     onClick={() => handleTTTMove(idx)}
                     disabled={symbol !== '' || !!game.tictactoe_state.winner || game.tictactoe_state.turn !== role}
-                    className="h-20 bg-slate-950 border border-slate-800 rounded-xl text-3xl flex items-center justify-center transition active:scale-95 disabled:opacity-80"
+                    className="h-20 bg-slate-950 border border-slate-800 rounded-xl text-3xl flex items-center justify-center transition active:scale-95 disabled:opacity-80 font-bold"
                   >
                     {symbol}
                   </button>
@@ -855,52 +861,70 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* 7. COUPLES BINGO MODE */}
-          {mode === 'bingo' && game?.bingo_state && (
-            <motion.div key="bingo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4 text-center">
+          {/* 7. CONNECT 4 MODE (RED 🔴 vs BLUE 🔵) */}
+          {mode === 'connect4' && game?.bingo_state && (
+            <motion.div key="connect4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4 text-center">
               <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                <span className="font-bold text-emerald-400 text-sm">🎲 Couples Romance Bingo</span>
+                <span className="font-bold text-emerald-400 text-sm">🔴🔵 Connect 4 (4-in-a-Row)</span>
                 <button onClick={handleReturnToHub} className="text-xs text-slate-400 hover:text-white">
                   ← Back to Hub
                 </button>
               </div>
 
+              <div className="flex justify-around items-center text-xs font-semibold">
+                <span className={game.bingo_state.turn === 'player_a' ? 'text-pink-400 font-bold underline' : 'text-slate-400'}>
+                  🔴 {game.player_a_name}
+                </span>
+                <span className="text-slate-600">vs</span>
+                <span className={game.bingo_state.turn === 'player_b' ? 'text-indigo-400 font-bold underline' : 'text-slate-400'}>
+                  🔵 {game.player_b_name}
+                </span>
+              </div>
+
               {game.bingo_state.winner ? (
                 <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-300 font-bold text-sm">
-                  🎉 BINGO! {game.bingo_state.winner} Completed 4-In-A-Row First! 🏆
+                  {game.bingo_state.winner === 'Tie' ? "🤝 Board Full! Tie Game!" : `🎉 ${game.bingo_state.winner} Got 4-in-a-Row! 🏆`}
                 </div>
               ) : (
-                <p className="text-xs text-slate-400">Tap prompts you've done together! First 4-in-a-row wins!</p>
+                <div className="text-xs text-slate-400">
+                  Turn: <strong className="text-slate-200">
+                    {game.bingo_state.turn === role ? 'YOUR TURN! Tap a column ▼' : `Waiting for ${game.bingo_state.turn === 'player_a' ? game.player_a_name : game.player_b_name}...`}
+                  </strong>
+                </div>
               )}
 
-              {/* 4x4 Bingo Grid */}
-              <div className="grid grid-cols-4 gap-2">
-                {BINGO_PROMPTS.map((prompt, idx) => {
-                  const myList: number[] = role === 'player_a' ? (game.bingo_state.board_a || []) : (game.bingo_state.board_b || []);
-                  const isChecked = myList.includes(idx);
-                  return (
-                    <button
-                      key={idx}
-                      onClick={() => handleBingoClick(idx)}
-                      className={`p-2 h-20 rounded-lg text-[10px] leading-tight font-semibold flex flex-col justify-between items-center transition border ${
-                        isChecked
-                          ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <span className="text-right w-full text-[8px] opacity-50">{isChecked ? '✓' : ''}</span>
-                      <span>{prompt}</span>
-                    </button>
-                  );
-                })}
+              {/* Column Drop Buttons */}
+              <div className="grid grid-cols-7 gap-1 max-w-[340px] mx-auto">
+                {[0, 1, 2, 3, 4, 5, 6].map((colIdx) => (
+                  <button
+                    key={colIdx}
+                    onClick={() => handleConnect4Drop(colIdx)}
+                    disabled={!!game.bingo_state.winner || game.bingo_state.turn !== role}
+                    className="py-1 bg-slate-800 hover:bg-emerald-500/30 text-emerald-400 rounded text-xs font-bold transition disabled:opacity-30"
+                  >
+                    ▼
+                  </button>
+                ))}
+              </div>
+
+              {/* 6 Rows x 7 Cols Board */}
+              <div className="grid grid-cols-7 gap-1 max-w-[340px] mx-auto p-2 bg-slate-950 border border-slate-800 rounded-xl">
+                {(game.bingo_state.board || Array(42).fill('')).map((chip: string, idx: number) => (
+                  <div
+                    key={idx}
+                    className="h-10 border border-slate-800/80 rounded-full flex items-center justify-center text-xl bg-slate-900"
+                  >
+                    {chip}
+                  </div>
+                ))}
               </div>
 
               <div className="flex gap-2 pt-2">
                 <button
-                  onClick={handleStartBingo}
+                  onClick={handleStartConnect4}
                   className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 rounded-xl font-bold text-xs transition"
                 >
-                  New Bingo Card 🔄
+                  Play Again 🔄
                 </button>
                 <button
                   onClick={handleReturnToHub}
@@ -912,7 +936,7 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* 8. QUIZ RESULTS MODE (WITH "SELECT ANOTHER LEVEL" WITHOUT LEAVING ROOM!) */}
+          {/* 8. QUIZ RESULTS MODE */}
           {mode === 'results' && (
             <motion.div key="results" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="space-y-6">
               <div className="text-center">
@@ -934,7 +958,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Winner Announcement */}
               <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-center">
                 <p className="text-sm font-bold text-amber-300">
                   {scorePlayerA > scorePlayerB
@@ -945,7 +968,6 @@ export default function Home() {
                 </p>
               </div>
 
-              {/* TABBED BREAKDOWN */}
               <div className="space-y-4">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider text-center">Answer Breakdown</h3>
                 
@@ -1007,13 +1029,12 @@ export default function Home() {
                 )}
               </div>
 
-              {/* STAY IN ROOM ACTION BUTTONS */}
               <div className="space-y-2">
                 <button
                   onClick={handleReturnToHub}
                   className="w-full py-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 rounded-xl font-bold text-sm transition shadow-lg shadow-pink-500/20"
                 >
-                  🎮 Pick Another Level or Game (Stay in Room)
+                  🎮 Pick Another Activity or Level (Stay in Room)
                 </button>
                 <button
                   onClick={handleExitRoom}
