@@ -20,20 +20,22 @@ export default function Icon() {
           justifyContent: 'center',
           background: 'linear-gradient(135deg, #020617 0%, #1e1b4b 100%)',
           borderRadius: '100px',
+          padding: '20px',
         }}
       >
         <span
           style={{
-            fontSize: 220,
+            fontSize: 95,
             fontWeight: 900,
             fontFamily: 'sans-serif',
             background: 'linear-gradient(to right, #ec4899, #818cf8)',
             backgroundClip: 'text',
             color: 'transparent',
-            letterSpacing: '-10px',
+            textAlign: 'center',
+            letterSpacing: '-2px',
           }}
         >
-          2U
+          2 of Us
         </span>
       </div>
     ),
