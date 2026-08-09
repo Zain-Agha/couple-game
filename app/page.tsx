@@ -5,7 +5,6 @@ import { supabase } from '@/lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 
-// Import Modular Components
 import RoomHub from './components/RoomHub';
 import WouldYouRather from './components/WouldYouRather';
 import Battleship from './components/Battleship';
@@ -77,6 +76,7 @@ export default function Home() {
   const [name, setName] = useState('');
   const [gameCodeInput, setGameCodeInput] = useState('');
   const [selectedLevel, setSelectedLevel] = useState(1);
+  const [selectedRelationshipMode, setSelectedRelationshipMode] = useState<'couples' | 'friends' | 'siblings' | 'kids'>('couples');
   const [game, setGame] = useState<any>(null);
   const [questions, setQuestions] = useState<any[]>([]);
   const [currentQIndex, setCurrentQIndex] = useState(0);
@@ -123,7 +123,7 @@ export default function Home() {
             setCurrentQIndex(0);
             setUserAnswers({});
             playSound('success');
-            await loadQuestions(updatedGame.current_level || 1);
+            await loadQuestions(updatedGame.current_level || 1, updatedGame.relationship_mode || 'couples');
           } else if (updatedGame.status === 'finished') {
             await fetchResults(updatedGame.id);
             setMode('results');
@@ -149,11 +149,17 @@ export default function Home() {
     };
   }, [game?.id]);
 
-  const loadQuestions = async (lvl: number) => {
+  const loadQuestions = async (lvl: number, relMode: string) => {
+    // Determine level ID based on relationship mode
+    let targetLevel = lvl;
+    if (relMode === 'friends') targetLevel = 101;
+    else if (relMode === 'siblings') targetLevel = 201;
+    else if (relMode === 'kids') targetLevel = 301;
+
     const { data } = await supabase
       .from('questions')
       .select('*')
-      .eq('level', lvl)
+      .eq('level', targetLevel)
       .order('id', { ascending: true });
 
     if (data && data.length > 0) {
@@ -176,6 +182,7 @@ export default function Home() {
         status: 'in_hub',
         current_level: selectedLevel,
         code: shortCode,
+        relationship_mode: selectedRelationshipMode,
         current_game_type: 'quiz'
       }])
       .select()
@@ -189,7 +196,7 @@ export default function Home() {
       setRole('player_a');
       setMode('hub');
       playSound('success');
-      await loadQuestions(selectedLevel);
+      await loadQuestions(selectedLevel, selectedRelationshipMode);
     }
   };
 
@@ -228,14 +235,15 @@ export default function Home() {
       setMode('hub');
       playSound('success');
       setSelectedLevel(updatedGame.current_level || 1);
-      await loadQuestions(updatedGame.current_level || 1);
+      setSelectedRelationshipMode(updatedGame.relationship_mode || 'couples');
+      await loadQuestions(updatedGame.current_level || 1, updatedGame.relationship_mode || 'couples');
     }
   };
 
   const handleStartQuiz = async (lvl: number) => {
     playSound('click');
     setSelectedLevel(lvl);
-    await loadQuestions(lvl);
+    await loadQuestions(lvl, game.relationship_mode || 'couples');
     await supabase.from('answers').delete().eq('game_id', game.id);
     await supabase.from('games').update({ status: 'round_1', current_level: lvl, current_game_type: 'quiz' }).eq('id', game.id);
   };
@@ -369,6 +377,7 @@ export default function Home() {
               body: JSON.stringify({
                 realAnswer: ans.real_answer,
                 guessedAnswer: ans.guessed_answer,
+                relationshipMode: game.relationship_mode || 'couples',
               }),
             });
             const evalData = await res.json();
@@ -527,11 +536,66 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* 2. CREATE */}
+          {/* 2. CREATE ROOM MODE (WITH RELATIONSHIP VIBE SELECTOR) */}
           {mode === 'create' && (
             <motion.div key="create" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
               <h2 className="text-xl font-bold text-slate-200">Create Room</h2>
               <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your Name (e.g. Alex)" className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-pink-500" />
+
+              {/* MODE VIBE SELECTOR */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase mb-2">Who are you playing with?</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => { playSound('click'); setSelectedRelationshipMode('couples'); }}
+                    className={`p-3 rounded-xl border text-left transition ${
+                      selectedRelationshipMode === 'couples'
+                        ? 'bg-pink-500/20 border-pink-500 text-pink-300 font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <span className="block text-sm font-bold mb-0.5">💕 Couples</span>
+                    <span className="text-[10px] text-slate-400 block">Romance & Intimacy</span>
+                  </button>
+
+                  <button
+                    onClick={() => { playSound('click'); setSelectedRelationshipMode('friends'); }}
+                    className={`p-3 rounded-xl border text-left transition ${
+                      selectedRelationshipMode === 'friends'
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <span className="block text-sm font-bold mb-0.5">⚡ Friends</span>
+                    <span className="text-[10px] text-slate-400 block">Witty & Funny Habits</span>
+                  </button>
+
+                  <button
+                    onClick={() => { playSound('click'); setSelectedRelationshipMode('siblings'); }}
+                    className={`p-3 rounded-xl border text-left transition ${
+                      selectedRelationshipMode === 'siblings'
+                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <span className="block text-sm font-bold mb-0.5">🏠 Siblings & Family</span>
+                    <span className="text-[10px] text-slate-400 block">Childhood Memories</span>
+                  </button>
+
+                  <button
+                    onClick={() => { playSound('click'); setSelectedRelationshipMode('kids'); }}
+                    className={`p-3 rounded-xl border text-left transition ${
+                      selectedRelationshipMode === 'kids'
+                        ? 'bg-purple-500/20 border-purple-500 text-purple-300 font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <span className="block text-sm font-bold mb-0.5">🎈 Kids & Family Safe</span>
+                    <span className="text-[10px] text-slate-400 block">Cartoons & Superpowers</span>
+                  </button>
+                </div>
+              </div>
+
               <button onClick={handleCreateGame} disabled={loading} className="w-full py-3 bg-pink-500 hover:bg-pink-600 rounded-xl font-bold transition disabled:opacity-50">
                 {loading ? 'Creating...' : 'Create Room'}
               </button>
@@ -685,8 +749,7 @@ export default function Home() {
                 <div className="space-y-6">
                   <div className="space-y-2">
                     <div className="flex justify-between items-center text-xs font-semibold uppercase tracking-wider text-slate-400">
-                      <span>Level {game.current_level} • {game.status === 'round_1' ? 'Round 1' : 'Round 2'}</span>
-                      <span className="text-pink-400">Question {currentQIndex + 1} / {questions.length}</span>
+                      <span>Question {currentQIndex + 1} / {questions.length}</span>
                     </div>
                     <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800">
                       <motion.div className="bg-gradient-to-r from-pink-500 to-rose-500 h-full" animate={{ width: `${((currentQIndex + 1) / questions.length) * 100}%` }} transition={{ duration: 0.3 }} />
@@ -720,7 +783,6 @@ export default function Home() {
             <motion.div key="results" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="space-y-6">
               <div className="text-center">
                 <h2 className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-indigo-400">Final Score Reveal! 🎉</h2>
-                <p className="text-xs text-slate-400 mt-1">Level {game.current_level}: {LEVEL_NAMES[game.current_level]}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -783,7 +845,7 @@ export default function Home() {
               </div>
 
               <div className="space-y-2">
-                <button onClick={handleReturnToHub} className="w-full py-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 rounded-xl font-bold text-sm transition shadow-lg shadow-pink-500/20">🎮 Pick Another Activity or Level (Stay in Room)</button>
+                <button onClick={handleReturnToHub} className="w-full py-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 rounded-xl font-bold text-sm transition shadow-lg shadow-pink-500/20">🎮 Pick Another Activity (Stay in Room)</button>
                 <button onClick={handleExitRoom} className="w-full py-2 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold text-xs text-slate-400 transition">🚪 Exit Room</button>
               </div>
             </motion.div>
