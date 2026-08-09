@@ -9,6 +9,10 @@ import RoomHub from './components/RoomHub';
 import WouldYouRather from './components/WouldYouRather';
 import Battleship from './components/Battleship';
 import Wordle from './components/Wordle';
+import TruthOrDare from './components/TruthOrDare';
+import DotsAndBoxes from './components/DotsAndBoxes';
+import NamePlace from './components/NamePlace';
+import WordChain from './components/WordChain';
 
 export const LEVEL_NAMES: { [key: number]: string } = {
   1: 'The Basics', 2: 'Food & Cravings', 3: 'Hobbies & Chill', 4: 'Daily Routines', 5: 'Pet Peeves',
@@ -71,7 +75,7 @@ const generateShortCode = () => {
 };
 
 export default function Home() {
-  const [mode, setMode] = useState<'menu' | 'create' | 'join' | 'hub' | 'quiz' | 'tictactoe' | 'connect4' | 'wouldyourather' | 'battleship' | 'wordle' | 'results'>('menu');
+  const [mode, setMode] = useState<any>('menu');
   const [role, setRole] = useState<'player_a' | 'player_b' | null>(null);
   const [name, setName] = useState('');
   const [gameCodeInput, setGameCodeInput] = useState('');
@@ -115,9 +119,8 @@ export default function Home() {
           const updatedGame = payload.new;
           setGame(updatedGame);
 
-          if (updatedGame.status === 'in_hub') {
-            setMode('hub');
-          } else if (updatedGame.status === 'round_1' || updatedGame.status === 'round_2') {
+          if (updatedGame.status === 'in_hub') setMode('hub');
+          else if (updatedGame.status === 'round_1' || updatedGame.status === 'round_2') {
             setMode('quiz');
             setSubmittedRound(false);
             setCurrentQIndex(0);
@@ -129,17 +132,15 @@ export default function Home() {
             setMode('results');
             playSound('fanfare');
             confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
-          } else if (updatedGame.status === 'playing_tictactoe') {
-            setMode('tictactoe');
-          } else if (updatedGame.status === 'playing_connect4') {
-            setMode('connect4');
-          } else if (updatedGame.status === 'playing_wouldyourather') {
-            setMode('wouldyourather');
-          } else if (updatedGame.status === 'playing_battleship') {
-            setMode('battleship');
-          } else if (updatedGame.status === 'playing_wordle') {
-            setMode('wordle');
-          }
+          } else if (updatedGame.status === 'playing_tictactoe') setMode('tictactoe');
+          else if (updatedGame.status === 'playing_connect4') setMode('connect4');
+          else if (updatedGame.status === 'playing_wouldyourather') setMode('wouldyourather');
+          else if (updatedGame.status === 'playing_battleship') setMode('battleship');
+          else if (updatedGame.status === 'playing_wordle') setMode('wordle');
+          else if (updatedGame.status === 'playing_truthordare') setMode('truthordare');
+          else if (updatedGame.status === 'playing_dotsandboxes') setMode('dotsandboxes');
+          else if (updatedGame.status === 'playing_nameplace') setMode('nameplace');
+          else if (updatedGame.status === 'playing_wordchain') setMode('wordchain');
         }
       )
       .subscribe();
@@ -150,21 +151,13 @@ export default function Home() {
   }, [game?.id]);
 
   const loadQuestions = async (lvl: number, relMode: string) => {
-    // Determine level ID based on relationship mode
     let targetLevel = lvl;
     if (relMode === 'friends') targetLevel = 101;
     else if (relMode === 'siblings') targetLevel = 201;
     else if (relMode === 'kids') targetLevel = 301;
 
-    const { data } = await supabase
-      .from('questions')
-      .select('*')
-      .eq('level', targetLevel)
-      .order('id', { ascending: true });
-
-    if (data && data.length > 0) {
-      setQuestions(data);
-    }
+    const { data } = await supabase.from('questions').select('*').eq('level', targetLevel).order('id', { ascending: true });
+    if (data && data.length > 0) setQuestions(data);
   };
 
   const handleCreateGame = async () => {
@@ -185,13 +178,11 @@ export default function Home() {
         relationship_mode: selectedRelationshipMode,
         current_game_type: 'quiz'
       }])
-      .select()
-      .single();
+      .select().single();
 
     setLoading(false);
-    if (error) {
-      setError('Could not create room.');
-    } else {
+    if (error) setError('Could not create room.');
+    else {
       setGame(data);
       setRole('player_a');
       setMode('hub');
@@ -223,13 +214,11 @@ export default function Home() {
       .from('games')
       .update({ player_b_name: name, status: 'in_hub' })
       .eq('id', existingGame.id)
-      .select()
-      .single();
+      .select().single();
 
     setLoading(false);
-    if (error || !updatedGame) {
-      setError('Could not join room.');
-    } else {
+    if (error || !updatedGame) setError('Could not join room.');
+    else {
       setGame(updatedGame);
       setRole('player_b');
       setMode('hub');
@@ -278,6 +267,30 @@ export default function Home() {
     await supabase.from('games').update({ status: 'playing_wordle', current_game_type: 'wordle', wordle_state: initState }).eq('id', game.id);
   };
 
+  const handleStartTruthOrDare = async () => {
+    playSound('click');
+    const initState = { prompt: '', type: null };
+    await supabase.from('games').update({ status: 'playing_truthordare', current_game_type: 'truthordare', truthordare_state: initState }).eq('id', game.id);
+  };
+
+  const handleStartDotsAndBoxes = async () => {
+    playSound('click');
+    const initState = { lines: [], boxes: {}, turn: 'player_a', winner: null };
+    await supabase.from('games').update({ status: 'playing_dotsandboxes', current_game_type: 'dotsandboxes', dotsandboxes_state: initState }).eq('id', game.id);
+  };
+
+  const handleStartNamePlace = async () => {
+    playSound('click');
+    const initState = { letter: '', p1_inputs: {}, p2_inputs: {}, result: null };
+    await supabase.from('games').update({ status: 'playing_nameplace', current_game_type: 'nameplace', nameplace_state: initState }).eq('id', game.id);
+  };
+
+  const handleStartWordChain = async () => {
+    playSound('click');
+    const initState = { words: [], turn: 'player_a', winner: null };
+    await supabase.from('games').update({ status: 'playing_wordchain', current_game_type: 'wordchain', wordchain_state: initState }).eq('id', game.id);
+  };
+
   const handleReturnToHub = async () => {
     playSound('click');
     await supabase.from('games').update({ status: 'in_hub' }).eq('id', game.id);
@@ -311,14 +324,7 @@ export default function Home() {
 
     for (const q of questions) {
       const text = userAnswers[q.id] || '';
-      
-      const { data: existing } = await supabase
-        .from('answers')
-        .select('*')
-        .eq('game_id', game.id)
-        .eq('question_id', q.id)
-        .eq('round_focus', roundFocus)
-        .single();
+      const { data: existing } = await supabase.from('answers').select('*').eq('game_id', game.id).eq('question_id', q.id).eq('round_focus', roundFocus).single();
 
       if (existing) {
         const updateData = isFocusPlayer ? { real_answer: text } : { guessed_answer: text };
@@ -341,31 +347,21 @@ export default function Home() {
 
   const checkAndAdvanceRound = async () => {
     const currentRoundFocus = game.status === 'round_1' ? 'player_a' : 'player_b';
-    const { data: answers } = await supabase
-      .from('answers')
-      .select('*')
-      .eq('game_id', game.id)
-      .eq('round_focus', currentRoundFocus);
+    const { data: answers } = await supabase.from('answers').select('*').eq('game_id', game.id).eq('round_focus', currentRoundFocus);
 
     if (answers && answers.length >= questions.length) {
       const allComplete = answers.filter((a) => a.real_answer && a.guessed_answer).length === questions.length;
 
       if (allComplete) {
-        if (game.status === 'round_1') {
-          await supabase.from('games').update({ status: 'round_2' }).eq('id', game.id);
-        } else if (game.status === 'round_2') {
-          evaluateAllAnswersAndFinish();
-        }
+        if (game.status === 'round_1') await supabase.from('games').update({ status: 'round_2' }).eq('id', game.id);
+        else if (game.status === 'round_2') evaluateAllAnswersAndFinish();
       }
     }
   };
 
   const evaluateAllAnswersAndFinish = async () => {
     setEvaluating(true);
-    const { data: allAnswers } = await supabase
-      .from('answers')
-      .select('*, questions(question_text)')
-      .eq('game_id', game.id);
+    const { data: allAnswers } = await supabase.from('answers').select('*, questions(question_text)').eq('game_id', game.id);
 
     if (allAnswers) {
       for (const ans of allAnswers) {
@@ -507,7 +503,6 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950 text-white flex flex-col items-center justify-center p-4">
-      {/* Header */}
       <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-6">
         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-300 to-indigo-400">
           Two of Us 💕
@@ -515,7 +510,6 @@ export default function Home() {
         <p className="text-slate-400 text-xs md:text-sm mt-1">How well do you really know each other?</p>
       </motion.div>
 
-      {/* Main Container Card */}
       <motion.div layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-lg bg-slate-900/70 border border-slate-800 rounded-2xl p-6 backdrop-blur-xl shadow-2xl">
         {error && (
           <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm text-center">
@@ -524,7 +518,6 @@ export default function Home() {
         )}
 
         <AnimatePresence mode="wait">
-          {/* 1. MENU */}
           {mode === 'menu' && (
             <motion.div key="menu" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
               <button onClick={() => { playSound('click'); setMode('create'); }} className="w-full py-4 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 rounded-xl font-bold text-lg transition active:scale-95">
@@ -536,60 +529,30 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* 2. CREATE ROOM MODE (WITH RELATIONSHIP VIBE SELECTOR) */}
           {mode === 'create' && (
             <motion.div key="create" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
               <h2 className="text-xl font-bold text-slate-200">Create Room</h2>
               <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your Name (e.g. Alex)" className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-pink-500" />
 
-              {/* MODE VIBE SELECTOR */}
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase mb-2">Who are you playing with?</label>
                 <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => { playSound('click'); setSelectedRelationshipMode('couples'); }}
-                    className={`p-3 rounded-xl border text-left transition ${
-                      selectedRelationshipMode === 'couples'
-                        ? 'bg-pink-500/20 border-pink-500 text-pink-300 font-bold'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
-                    }`}
-                  >
+                  <button onClick={() => { playSound('click'); setSelectedRelationshipMode('couples'); }} className={`p-3 rounded-xl border text-left transition ${selectedRelationshipMode === 'couples' ? 'bg-pink-500/20 border-pink-500 text-pink-300 font-bold' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>
                     <span className="block text-sm font-bold mb-0.5">💕 Couples</span>
                     <span className="text-[10px] text-slate-400 block">Romance & Intimacy</span>
                   </button>
 
-                  <button
-                    onClick={() => { playSound('click'); setSelectedRelationshipMode('friends'); }}
-                    className={`p-3 rounded-xl border text-left transition ${
-                      selectedRelationshipMode === 'friends'
-                        ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
-                    }`}
-                  >
+                  <button onClick={() => { playSound('click'); setSelectedRelationshipMode('friends'); }} className={`p-3 rounded-xl border text-left transition ${selectedRelationshipMode === 'friends' ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>
                     <span className="block text-sm font-bold mb-0.5">⚡ Friends</span>
                     <span className="text-[10px] text-slate-400 block">Witty & Funny Habits</span>
                   </button>
 
-                  <button
-                    onClick={() => { playSound('click'); setSelectedRelationshipMode('siblings'); }}
-                    className={`p-3 rounded-xl border text-left transition ${
-                      selectedRelationshipMode === 'siblings'
-                        ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
-                    }`}
-                  >
+                  <button onClick={() => { playSound('click'); setSelectedRelationshipMode('siblings'); }} className={`p-3 rounded-xl border text-left transition ${selectedRelationshipMode === 'siblings' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>
                     <span className="block text-sm font-bold mb-0.5">🏠 Siblings & Family</span>
                     <span className="text-[10px] text-slate-400 block">Childhood Memories</span>
                   </button>
 
-                  <button
-                    onClick={() => { playSound('click'); setSelectedRelationshipMode('kids'); }}
-                    className={`p-3 rounded-xl border text-left transition ${
-                      selectedRelationshipMode === 'kids'
-                        ? 'bg-purple-500/20 border-purple-500 text-purple-300 font-bold'
-                        : 'bg-slate-950 border-slate-800 text-slate-400'
-                    }`}
-                  >
+                  <button onClick={() => { playSound('click'); setSelectedRelationshipMode('kids'); }} className={`p-3 rounded-xl border text-left transition ${selectedRelationshipMode === 'kids' ? 'bg-purple-500/20 border-purple-500 text-purple-300 font-bold' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>
                     <span className="block text-sm font-bold mb-0.5">🎈 Kids & Family Safe</span>
                     <span className="text-[10px] text-slate-400 block">Cartoons & Superpowers</span>
                   </button>
@@ -603,7 +566,6 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* 3. JOIN */}
           {mode === 'join' && (
             <motion.div key="join" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
               <h2 className="text-xl font-bold text-slate-200">Join Room</h2>
@@ -616,7 +578,6 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* 4. ROOM HUB COMPONENT */}
           {mode === 'hub' && game && (
             <RoomHub
               game={game}
@@ -629,30 +590,26 @@ export default function Home() {
               onStartTicTacToe={handleStartTicTacToe}
               onStartBattleship={handleStartBattleship}
               onStartWordle={handleStartWordle}
+              onStartTruthOrDare={handleStartTruthOrDare}
+              onStartDotsAndBoxes={handleStartDotsAndBoxes}
+              onStartNamePlace={handleStartNamePlace}
+              onStartWordChain={handleStartWordChain}
               onExitRoom={handleExitRoom}
             />
           )}
 
-          {/* GAME 2: WOULD YOU RATHER */}
-          {mode === 'wouldyourather' && (
-            <WouldYouRather game={game} role={role} onReturnToHub={handleReturnToHub} />
-          )}
+          {mode === 'wouldyourather' && <WouldYouRather game={game} role={role} onReturnToHub={handleReturnToHub} />}
+          {mode === 'battleship' && <Battleship game={game} role={role} onReturnToHub={handleReturnToHub} />}
+          {mode === 'wordle' && <Wordle game={game} role={role} onReturnToHub={handleReturnToHub} />}
+          {mode === 'truthordare' && <TruthOrDare game={game} role={role} onReturnToHub={handleReturnToHub} />}
+          {mode === 'dotsandboxes' && <DotsAndBoxes game={game} role={role} onReturnToHub={handleReturnToHub} />}
+          {mode === 'nameplace' && <NamePlace game={game} role={role} onReturnToHub={handleReturnToHub} />}
+          {mode === 'wordchain' && <WordChain game={game} role={role} onReturnToHub={handleReturnToHub} />}
 
-          {/* GAME 5: BATLESHIP */}
-          {mode === 'battleship' && (
-            <Battleship game={game} role={role} onReturnToHub={handleReturnToHub} />
-          )}
-
-          {/* GAME 6: WORDLE */}
-          {mode === 'wordle' && (
-            <Wordle game={game} role={role} onReturnToHub={handleReturnToHub} />
-          )}
-
-          {/* GAME 3: CONNECT 4 */}
           {mode === 'connect4' && game?.bingo_state && (
             <motion.div key="connect4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4 text-center">
               <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                <span className="font-bold text-emerald-400 text-sm">🔴🔵 Connect 4 (4-in-a-Row)</span>
+                <span className="font-bold text-emerald-400 text-sm">🔴🔵 Connect 4</span>
                 <button onClick={handleReturnToHub} className="text-xs text-slate-400 hover:text-white">← Back to Hub</button>
               </div>
 
@@ -664,7 +621,7 @@ export default function Home() {
 
               {game.bingo_state.winner ? (
                 <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-300 font-bold text-sm">
-                  {game.bingo_state.winner === 'Tie' ? "🤝 Board Full! Tie Game!" : `🎉 ${game.bingo_state.winner} Got 4-in-a-Row! 🏆`}
+                  {game.bingo_state.winner === 'Tie' ? "🤝 Board Full!" : `🎉 ${game.bingo_state.winner} Got 4-in-a-Row! 🏆`}
                 </div>
               ) : (
                 <div className="text-xs text-slate-400">
@@ -691,7 +648,6 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* GAME 4: TIC-TAC-TOE */}
           {mode === 'tictactoe' && game?.tictactoe_state && (
             <motion.div key="tictactoe" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6 text-center">
               <div className="flex justify-between items-center border-b border-slate-800 pb-3">
@@ -730,7 +686,6 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* GAME 1: QUIZ */}
           {mode === 'quiz' && questions.length > 0 && (
             <motion.div key="quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               {evaluating ? (
@@ -778,7 +733,6 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* QUIZ RESULTS */}
           {mode === 'results' && (
             <motion.div key="results" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="space-y-6">
               <div className="text-center">
