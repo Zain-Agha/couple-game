@@ -23,7 +23,14 @@ const LEVEL_NAMES: { [key: number]: string } = {
   15: 'Deep Soulmates',
 };
 
-// Web Audio API Synthesizer for Native Sound Effects
+const BINGO_PROMPTS = [
+  'Stolen a kiss today', 'Made coffee for partner', 'Laughed until crying',
+  'Watched a movie together', 'Cooked a meal together', 'Sent a cute text',
+  'Held hands in public', 'Given a shoulder massage', 'Remembered an anniversary',
+  'Shared a dessert', 'Complimented outfit', 'Inside joke moment',
+  'Planned a date night', 'Hugged for > 10 secs', 'Bought a surprise treat', 'Said "I Love You"'
+];
+
 const playSound = (type: 'click' | 'success' | 'fanfare') => {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -43,8 +50,8 @@ const playSound = (type: 'click' | 'success' | 'fanfare') => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
-      osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1); // E5
+      osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+      osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1);
       gain.gain.setValueAtTime(0.15, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
       osc.connect(gain);
@@ -65,12 +72,9 @@ const playSound = (type: 'click' | 'success' | 'fanfare') => {
         osc.stop(ctx.currentTime + idx * 0.08 + 0.3);
       });
     }
-  } catch (e) {
-    // Browser audio context blocked before interaction
-  }
+  } catch (e) {}
 };
 
-// Generate 6-Character Short Room Code
 const generateShortCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let result = '';
@@ -81,7 +85,7 @@ const generateShortCode = () => {
 };
 
 export default function Home() {
-  const [mode, setMode] = useState<'menu' | 'create' | 'join' | 'lobby' | 'game' | 'results'>('menu');
+  const [mode, setMode] = useState<'menu' | 'create' | 'join' | 'hub' | 'quiz' | 'tictactoe' | 'bingo' | 'results'>('menu');
   const [role, setRole] = useState<'player_a' | 'player_b' | null>(null);
   const [name, setName] = useState('');
   const [gameCodeInput, setGameCodeInput] = useState('');
@@ -98,7 +102,7 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
 
-  // Check URL for direct invite link: ?code=XXXXXX
+  // Check URL parameters for direct link join
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlCode = params.get('code');
@@ -108,7 +112,7 @@ export default function Home() {
     }
   }, []);
 
-  // Real-Time Listener
+  // Real-Time Room Synchronizer
   useEffect(() => {
     if (!game?.id) return;
 
@@ -126,8 +130,11 @@ export default function Home() {
           const updatedGame = payload.new;
           setGame(updatedGame);
 
-          if (updatedGame.status === 'round_1' || updatedGame.status === 'round_2') {
-            setMode('game');
+          // Route to active game type or hub
+          if (updatedGame.status === 'in_hub') {
+            setMode('hub');
+          } else if (updatedGame.status === 'round_1' || updatedGame.status === 'round_2') {
+            setMode('quiz');
             setSubmittedRound(false);
             setCurrentQIndex(0);
             setUserAnswers({});
@@ -137,11 +144,11 @@ export default function Home() {
             await fetchResults(updatedGame.id);
             setMode('results');
             playSound('fanfare');
-            confetti({
-              particleCount: 120,
-              spread: 80,
-              origin: { y: 0.6 },
-            });
+            confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+          } else if (updatedGame.status === 'playing_tictactoe') {
+            setMode('tictactoe');
+          } else if (updatedGame.status === 'playing_bingo') {
+            setMode('bingo');
           }
         }
       )
@@ -152,7 +159,6 @@ export default function Home() {
     };
   }, [game?.id]);
 
-  // Load Questions
   const loadQuestions = async (lvl: number) => {
     const { data } = await supabase
       .from('questions')
@@ -165,7 +171,7 @@ export default function Home() {
     }
   };
 
-  // 1. Create Game
+  // 1. Create Room
   const handleCreateGame = async () => {
     if (!name.trim()) return setError('Please enter your name');
     playSound('click');
@@ -176,7 +182,13 @@ export default function Home() {
 
     const { data, error } = await supabase
       .from('games')
-      .insert([{ player_a_name: name, status: 'waiting', current_level: selectedLevel, code: shortCode }])
+      .insert([{
+        player_a_name: name,
+        status: 'in_hub',
+        current_level: selectedLevel,
+        code: shortCode,
+        current_game_type: 'quiz'
+      }])
       .select()
       .single();
 
@@ -186,13 +198,13 @@ export default function Home() {
     } else {
       setGame(data);
       setRole('player_a');
-      setMode('lobby');
+      setMode('hub');
       playSound('success');
       await loadQuestions(selectedLevel);
     }
   };
 
-  // 2. Join Game (Fix for short 6-character codes)
+  // 2. Join Room
   const handleJoinGame = async () => {
     if (!name.trim()) return setError('Please enter your name');
     if (!gameCodeInput.trim()) return setError('Please enter Room Code');
@@ -203,52 +215,89 @@ export default function Home() {
     const cleanCode = gameCodeInput.trim().toUpperCase();
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanCode);
 
-    // Query safely depending on whether it's a 6-char short code or UUID
     const { data: existingGame, error: fetchErr } = isUUID
       ? await supabase.from('games').select('*').eq('id', cleanCode).maybeSingle()
       : await supabase.from('games').select('*').eq('code', cleanCode).maybeSingle();
 
     if (fetchErr || !existingGame) {
-      console.error('Room search error:', fetchErr);
       setLoading(false);
-      return setError('Room not found! Check the 6-character code.');
+      return setError('Room not found! Check code.');
     }
 
-    const { data: updatedGame, error: updateError } = await supabase
+    const { data: updatedGame, error } = await supabase
       .from('games')
-      .update({ player_b_name: name, status: 'waiting' })
+      .update({ player_b_name: name, status: 'in_hub' })
       .eq('id', existingGame.id)
       .select()
       .single();
 
     setLoading(false);
-    if (updateError || !updatedGame) {
+    if (error || !updatedGame) {
       setError('Could not join room.');
     } else {
       setGame(updatedGame);
       setRole('player_b');
-      setMode('lobby');
+      setMode('hub');
       playSound('success');
       setSelectedLevel(updatedGame.current_level || 1);
       await loadQuestions(updatedGame.current_level || 1);
     }
   };
-  // 3. Start Game
-  const handleStartGame = async () => {
-    playSound('click');
-    await supabase.from('games').update({ current_level: selectedLevel }).eq('id', game.id);
-    await loadQuestions(selectedLevel);
-    const { data } = await supabase
-      .from('games')
-      .update({ status: 'round_1' })
-      .eq('id', game.id)
-      .select()
-      .single();
 
-    if (data) setGame(data);
+  // 3. Select & Start Quiz Level inside Room
+  const handleStartQuiz = async (lvl: number) => {
+    playSound('click');
+    setSelectedLevel(lvl);
+    await loadQuestions(lvl);
+    
+    // Clear previous round answers for new level
+    await supabase.from('answers').delete().eq('game_id', game.id);
+
+    await supabase
+      .from('games')
+      .update({ status: 'round_1', current_level: lvl, current_game_type: 'quiz' })
+      .eq('id', game.id);
   };
 
-  // 4. Copy Invite Link
+  // 4. Start Tic-Tac-Toe
+  const handleStartTicTacToe = async () => {
+    playSound('click');
+    const initialTTT = { board: ["","","","","","","","",""], turn: "player_a", winner: null };
+    await supabase
+      .from('games')
+      .update({ status: 'playing_tictactoe', current_game_type: 'tictactoe', tictactoe_state: initialTTT })
+      .eq('id', game.id);
+  };
+
+  // 5. Start Bingo
+  const handleStartBingo = async () => {
+    playSound('click');
+    const initialBingo = { board_a: [], board_b: [], winner: null };
+    await supabase
+      .from('games')
+      .update({ status: 'playing_bingo', current_game_type: 'bingo', bingo_state: initialBingo })
+      .eq('id', game.id);
+  };
+
+  // Return to Room Hub without exiting room!
+  const handleReturnToHub = async () => {
+    playSound('click');
+    await supabase.from('games').update({ status: 'in_hub' }).eq('id', game.id);
+  };
+
+  // Explicit Exit Room (Deletes data!)
+  const handleExitRoom = async () => {
+    playSound('click');
+    if (game?.id) {
+      await supabase.from('answers').delete().eq('game_id', game.id);
+      await supabase.from('games').delete().eq('id', game.id);
+    }
+    setGame(null);
+    setRole(null);
+    setMode('menu');
+  };
+
+  // Copy Link
   const handleCopyLink = () => {
     const roomCode = game.code || game.id;
     const shareUrl = `${window.location.origin}?code=${roomCode}`;
@@ -258,7 +307,7 @@ export default function Home() {
     setTimeout(() => setCopied(false), 2500);
   };
 
-  // 5. Submit Round
+  // Quiz Answer Submission
   const handleSubmitRoundAnswers = async () => {
     playSound('click');
     setLoading(true);
@@ -316,7 +365,7 @@ export default function Home() {
     }
   };
 
-  // 6. Evaluate with AI
+  // AI Evaluation
   const evaluateAllAnswersAndFinish = async () => {
     setEvaluating(true);
     const { data: allAnswers } = await supabase
@@ -352,7 +401,7 @@ export default function Home() {
     setEvaluating(false);
   };
 
-  // 7. Fetch Results
+  // Fetch Results
   const fetchResults = async (gameId: string) => {
     const { data } = await supabase
       .from('answers')
@@ -362,6 +411,85 @@ export default function Home() {
     if (data) {
       setResultsData(data);
     }
+  };
+
+  // Tic-Tac-Toe Move Logic
+  const handleTTTMove = async (index: number) => {
+    if (!game?.tictactoe_state) return;
+    const currentState = game.tictactoe_state;
+    if (currentState.winner || currentState.board[index] !== '') return;
+    if (currentState.turn !== role) return; // Not your turn!
+
+    playSound('click');
+    const newBoard = [...currentState.board];
+    newBoard[index] = role === 'player_a' ? '💖' : '💋';
+
+    // Check Win
+    const lines = [
+      [0,1,2],[3,4,5],[6,7,8],
+      [0,3,6],[1,4,7],[2,5,8],
+      [0,4,8],[2,4,6]
+    ];
+    let winner = null;
+    for (const [a, b, c] of lines) {
+      if (newBoard[a] && newBoard[a] === newBoard[b] && newBoard[a] === newBoard[c]) {
+        winner = role === 'player_a' ? game.player_a_name : game.player_b_name;
+      }
+    }
+    if (!winner && newBoard.every((cell) => cell !== '')) {
+      winner = 'Tie';
+    }
+
+    const nextTurn = currentState.turn === 'player_a' ? 'player_b' : 'player_a';
+    const updatedTTT = { board: newBoard, turn: nextTurn, winner };
+
+    if (winner) {
+      playSound('fanfare');
+      confetti({ particleCount: 100, spread: 70 });
+    }
+
+    await supabase.from('games').update({ tictactoe_state: updatedTTT }).eq('id', game.id);
+  };
+
+  // Bingo Tile Click Logic
+  const handleBingoClick = async (promptIndex: number) => {
+    if (!game?.bingo_state || game.bingo_state.winner) return;
+    playSound('click');
+
+    const key = role === 'player_a' ? 'board_a' : 'board_b';
+    const currentList: number[] = game.bingo_state[key] || [];
+
+    let newList: number[];
+    if (currentList.includes(promptIndex)) {
+      newList = currentList.filter((i) => i !== promptIndex);
+    } else {
+      newList = [...currentList, promptIndex];
+    }
+
+    // Check BINGO (4-in-a-row)
+    const winLines = [
+      [0,1,2,3], [4,5,6,7], [8,9,10,11], [12,13,14,15], // rows
+      [0,4,8,12], [1,5,9,13], [2,6,10,14], [3,7,11,15], // cols
+      [0,5,10,15], [3,6,9,12] // diagonals
+    ];
+
+    let winner = game.bingo_state.winner;
+    for (const line of winLines) {
+      if (line.every((idx) => newList.includes(idx))) {
+        winner = role === 'player_a' ? game.player_a_name : game.player_b_name;
+        playSound('fanfare');
+        confetti({ particleCount: 120, spread: 80 });
+        break;
+      }
+    }
+
+    const updatedBingo = {
+      ...game.bingo_state,
+      [key]: newList,
+      winner,
+    };
+
+    await supabase.from('games').update({ bingo_state: updatedBingo }).eq('id', game.id);
   };
 
   const currentQ = questions[currentQIndex];
@@ -379,7 +507,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950 text-white flex flex-col items-center justify-center p-4">
-      {/* Header & Clean Subtitle */}
+      {/* Header */}
       <motion.div 
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -406,23 +534,17 @@ export default function Home() {
         )}
 
         <AnimatePresence mode="wait">
-          {/* 1. CLEAN MAIN MENU */}
+          {/* 1. MAIN MENU */}
           {mode === 'menu' && (
             <motion.div key="menu" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
               <button
-                onClick={() => {
-                  playSound('click');
-                  setMode('create');
-                }}
+                onClick={() => { playSound('click'); setMode('create'); }}
                 className="w-full py-4 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 rounded-xl font-bold text-lg transition shadow-lg shadow-pink-500/25 active:scale-95"
               >
                 Create Room
               </button>
               <button
-                onClick={() => {
-                  playSound('click');
-                  setMode('join');
-                }}
+                onClick={() => { playSound('click'); setMode('join'); }}
                 className="w-full py-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl font-bold text-lg transition active:scale-95"
               >
                 Join Room
@@ -441,35 +563,6 @@ export default function Home() {
                 placeholder="Your Name (e.g. Alex)"
                 className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-pink-500"
               />
-
-              {/* LEVEL SELECTOR */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase mb-2">Select Quiz Level</label>
-                <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-1">
-                  {Object.entries(LEVEL_NAMES).map(([lvlStr, title]) => {
-                    const lvlNum = Number(lvlStr);
-                    const isSelected = selectedLevel === lvlNum;
-                    return (
-                      <button
-                        key={lvlNum}
-                        onClick={() => {
-                          playSound('click');
-                          setSelectedLevel(lvlNum);
-                        }}
-                        className={`p-2 rounded-lg text-left text-xs transition border ${
-                          isSelected
-                            ? 'bg-pink-500/20 border-pink-500 text-pink-300 font-bold'
-                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        <span className="block font-bold">Lvl {lvlNum}</span>
-                        <span className="text-[10px] truncate block opacity-80">{title}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
               <button
                 onClick={handleCreateGame}
                 disabled={loading}
@@ -515,11 +608,11 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* 4. LOBBY MODE */}
-          {mode === 'lobby' && game && (
-            <motion.div key="lobby" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6 text-center">
-              {/* Short Room Code & Copy Link Button */}
-              <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
+          {/* 4. PERSISTENT ROOM HUB (PLAY MULTIPLE GAMES / LEVELS) */}
+          {mode === 'hub' && game && (
+            <motion.div key="hub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6 text-center">
+              {/* Room Code & Copy Link */}
+              <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
                 <span className="text-xs text-slate-400 uppercase font-semibold">Room Code</span>
                 <p className="text-3xl font-mono font-extrabold text-pink-400 tracking-widest">
                   {game.code || game.id.substring(0, 6).toUpperCase()}
@@ -530,48 +623,88 @@ export default function Home() {
                 >
                   {copied ? '✓ Link Copied!' : '🔗 Copy Invite Link'}
                 </button>
-                <div>
-                  <span className="inline-block mt-1 px-3 py-1 bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-full text-xs font-semibold">
-                    Level {game.current_level || selectedLevel}: {LEVEL_NAMES[game.current_level || selectedLevel]}
-                  </span>
-                </div>
               </div>
 
-              {/* Clean Player Names Display */}
-              <div className="flex justify-around items-center p-4 bg-slate-950/50 rounded-xl border border-slate-800/50">
+              {/* Connected Players */}
+              <div className="flex justify-around items-center p-3 bg-slate-950/50 rounded-xl border border-slate-800/50">
                 <div className="text-center">
-                  <span className="font-bold text-pink-300 text-base">{game.player_a_name || 'Waiting...'}</span>
+                  <span className="font-bold text-pink-300">{game.player_a_name || 'Waiting...'}</span>
                 </div>
                 <span className="text-slate-600 font-bold">💕</span>
                 <div className="text-center">
-                  <span className="font-bold text-indigo-300 text-base">{game.player_b_name || 'Waiting...'}</span>
+                  <span className="font-bold text-indigo-300">{game.player_b_name || 'Waiting...'}</span>
                 </div>
               </div>
 
+              {/* ARCADE GAME SELECTOR */}
               {game.player_a_name && game.player_b_name ? (
-                role === 'player_a' ? (
-                  <button
-                    onClick={handleStartGame}
-                    className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 rounded-xl font-bold text-lg shadow-lg shadow-emerald-500/25 active:scale-95 transition"
-                  >
-                    🚀 Start Quiz!
-                  </button>
-                ) : (
-                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-sm animate-pulse font-medium">
-                    Both connected! Waiting for {game.player_a_name} to press Start...
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Choose an Activity:</h3>
+
+                  {/* GAME 1: QUIZ SELECTOR */}
+                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl text-left space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-pink-400 text-sm">🧠 Couples Quiz (Levels 1-15)</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 max-h-36 overflow-y-auto pr-1">
+                      {Object.entries(LEVEL_NAMES).map(([lvlStr, title]) => {
+                        const lvlNum = Number(lvlStr);
+                        return (
+                          <button
+                            key={lvlNum}
+                            onClick={() => handleStartQuiz(lvlNum)}
+                            className="p-2 bg-slate-900 hover:bg-pink-500/20 border border-slate-800 hover:border-pink-500/50 rounded-lg text-left text-xs transition"
+                          >
+                            <span className="block font-bold text-slate-200">Lvl {lvlNum}</span>
+                            <span className="text-[10px] text-slate-400 truncate block">{title}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                )
+
+                  {/* GAME 2: TIC-TAC-TOE */}
+                  <button
+                    onClick={handleStartTicTacToe}
+                    className="w-full p-4 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left flex justify-between items-center transition group"
+                  >
+                    <div>
+                      <span className="font-bold text-indigo-400 text-sm block">❌⭕ Tic-Tac-Toe</span>
+                      <span className="text-xs text-slate-400">Hearts 💖 vs Kisses 💋 real-time battle</span>
+                    </div>
+                    <span className="text-sm font-bold text-indigo-400 group-hover:translate-x-1 transition">Play →</span>
+                  </button>
+
+                  {/* GAME 3: BINGO */}
+                  <button
+                    onClick={handleStartBingo}
+                    className="w-full p-4 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left flex justify-between items-center transition group"
+                  >
+                    <div>
+                      <span className="font-bold text-emerald-400 text-sm block">🎲 Couples Bingo</span>
+                      <span className="text-xs text-slate-400">Interactive 4-in-a-row prompt battle</span>
+                    </div>
+                    <span className="text-sm font-bold text-emerald-400 group-hover:translate-x-1 transition">Play →</span>
+                  </button>
+
+                  <button
+                    onClick={handleExitRoom}
+                    className="w-full py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl font-bold text-xs transition mt-4"
+                  >
+                    🚪 Exit Room (Deletes Data)
+                  </button>
+                </div>
               ) : (
                 <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 text-sm">
-                  Waiting for partner to join...
+                  Waiting for partner to join room...
                 </div>
               )}
             </motion.div>
           )}
 
-          {/* 5. GAME / QUIZ MODE */}
-          {mode === 'game' && questions.length > 0 && (
-            <motion.div key="game" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          {/* 5. QUIZ GAME MODE */}
+          {mode === 'quiz' && questions.length > 0 && (
+            <motion.div key="quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               {evaluating ? (
                 <div className="text-center py-12 space-y-4">
                   <div className="inline-block animate-spin text-4xl">🤖</div>
@@ -586,7 +719,6 @@ export default function Home() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {/* Progress Bar */}
                   <div className="space-y-2">
                     <div className="flex justify-between items-center text-xs font-semibold uppercase tracking-wider text-slate-400">
                       <span>Level {game.current_level} • {game.status === 'round_1' ? 'Round 1' : 'Round 2'}</span>
@@ -601,7 +733,6 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Question Box */}
                   <AnimatePresence mode="wait">
                     <motion.div 
                       key={currentQIndex}
@@ -612,34 +743,23 @@ export default function Home() {
                       className="p-5 bg-slate-950 border border-slate-800 rounded-xl text-center min-h-[120px] flex flex-col justify-center"
                     >
                       <span className="text-xs font-semibold text-pink-400 block mb-1">
-                        {isFocusPlayer
-                          ? `Answer about YOURSELF:`
-                          : `Guess ${focusName}'s answer:`}
+                        {isFocusPlayer ? `Answer about YOURSELF:` : `Guess ${focusName}'s answer:`}
                       </span>
                       <h3 className="text-lg font-bold text-white">{currentQ?.question_text}</h3>
                     </motion.div>
                   </AnimatePresence>
 
-                  {/* Input */}
-                  <div>
-                    <input
-                      type="text"
-                      value={userAnswers[currentQ?.id] || ''}
-                      onChange={(e) =>
-                        setUserAnswers({ ...userAnswers, [currentQ?.id]: e.target.value })
-                      }
-                      placeholder={isFocusPlayer ? 'Type your answer...' : `What would ${focusName} say?`}
-                      className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-pink-500 transition"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    value={userAnswers[currentQ?.id] || ''}
+                    onChange={(e) => setUserAnswers({ ...userAnswers, [currentQ?.id]: e.target.value })}
+                    placeholder={isFocusPlayer ? 'Type your answer...' : `What would ${focusName} say?`}
+                    className="w-full px-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white focus:outline-none focus:border-pink-500 transition"
+                  />
 
-                  {/* Buttons */}
                   <div className="flex justify-between gap-3">
                     <button
-                      onClick={() => {
-                        playSound('click');
-                        setCurrentQIndex(Math.max(0, currentQIndex - 1));
-                      }}
+                      onClick={() => { playSound('click'); setCurrentQIndex(Math.max(0, currentQIndex - 1)); }}
                       disabled={currentQIndex === 0}
                       className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm font-semibold disabled:opacity-30 transition"
                     >
@@ -648,10 +768,7 @@ export default function Home() {
 
                     {currentQIndex < questions.length - 1 ? (
                       <button
-                        onClick={() => {
-                          playSound('click');
-                          setCurrentQIndex(currentQIndex + 1);
-                        }}
+                        onClick={() => { playSound('click'); setCurrentQIndex(currentQIndex + 1); }}
                         className="flex-1 py-3 bg-pink-500 hover:bg-pink-600 rounded-xl text-sm font-bold transition"
                       >
                         Next →
@@ -671,7 +788,131 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* 6. RESULTS MODE */}
+          {/* 6. TIC-TAC-TOE MODE */}
+          {mode === 'tictactoe' && game?.tictactoe_state && (
+            <motion.div key="tictactoe" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6 text-center">
+              <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                <span className="font-bold text-indigo-400 text-sm">❌⭕ Couples Tic-Tac-Toe</span>
+                <button onClick={handleReturnToHub} className="text-xs text-slate-400 hover:text-white">
+                  ← Back to Hub
+                </button>
+              </div>
+
+              {/* Player Symbols */}
+              <div className="flex justify-around items-center text-xs font-semibold">
+                <span className={game.tictactoe_state.turn === 'player_a' ? 'text-pink-400 font-bold underline' : 'text-slate-400'}>
+                  💖 {game.player_a_name}
+                </span>
+                <span className="text-slate-600">vs</span>
+                <span className={game.tictactoe_state.turn === 'player_b' ? 'text-indigo-400 font-bold underline' : 'text-slate-400'}>
+                  💋 {game.player_b_name}
+                </span>
+              </div>
+
+              {/* Status Message */}
+              {game.tictactoe_state.winner ? (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 font-bold text-sm">
+                  {game.tictactoe_state.winner === 'Tie'
+                    ? "🤝 It's a Tie!"
+                    : `🏆 ${game.tictactoe_state.winner} Wins! 🎉`}
+                </div>
+              ) : (
+                <div className="text-xs text-slate-400">
+                  Turn: <strong className="text-slate-200">
+                    {game.tictactoe_state.turn === role ? 'YOUR TURN!' : `Waiting for ${game.tictactoe_state.turn === 'player_a' ? game.player_a_name : game.player_b_name}...`}
+                  </strong>
+                </div>
+              )}
+
+              {/* 3x3 Grid */}
+              <div className="grid grid-cols-3 gap-3 max-w-[280px] mx-auto">
+                {game.tictactoe_state.board.map((symbol: string, idx: number) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleTTTMove(idx)}
+                    disabled={symbol !== '' || !!game.tictactoe_state.winner || game.tictactoe_state.turn !== role}
+                    className="h-20 bg-slate-950 border border-slate-800 rounded-xl text-3xl flex items-center justify-center transition active:scale-95 disabled:opacity-80"
+                  >
+                    {symbol}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={handleStartTicTacToe}
+                  className="flex-1 py-3 bg-indigo-500 hover:bg-indigo-600 rounded-xl font-bold text-xs transition"
+                >
+                  Play Again 🔄
+                </button>
+                <button
+                  onClick={handleReturnToHub}
+                  className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold text-xs transition"
+                >
+                  Choose Another Activity 🎮
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* 7. COUPLES BINGO MODE */}
+          {mode === 'bingo' && game?.bingo_state && (
+            <motion.div key="bingo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4 text-center">
+              <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                <span className="font-bold text-emerald-400 text-sm">🎲 Couples Romance Bingo</span>
+                <button onClick={handleReturnToHub} className="text-xs text-slate-400 hover:text-white">
+                  ← Back to Hub
+                </button>
+              </div>
+
+              {game.bingo_state.winner ? (
+                <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-300 font-bold text-sm">
+                  🎉 BINGO! {game.bingo_state.winner} Completed 4-In-A-Row First! 🏆
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">Tap prompts you've done together! First 4-in-a-row wins!</p>
+              )}
+
+              {/* 4x4 Bingo Grid */}
+              <div className="grid grid-cols-4 gap-2">
+                {BINGO_PROMPTS.map((prompt, idx) => {
+                  const myList: number[] = role === 'player_a' ? (game.bingo_state.board_a || []) : (game.bingo_state.board_b || []);
+                  const isChecked = myList.includes(idx);
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => handleBingoClick(idx)}
+                      className={`p-2 h-20 rounded-lg text-[10px] leading-tight font-semibold flex flex-col justify-between items-center transition border ${
+                        isChecked
+                          ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <span className="text-right w-full text-[8px] opacity-50">{isChecked ? '✓' : ''}</span>
+                      <span>{prompt}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={handleStartBingo}
+                  className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 rounded-xl font-bold text-xs transition"
+                >
+                  New Bingo Card 🔄
+                </button>
+                <button
+                  onClick={handleReturnToHub}
+                  className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold text-xs transition"
+                >
+                  Choose Another Activity 🎮
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* 8. QUIZ RESULTS MODE (WITH "SELECT ANOTHER LEVEL" WITHOUT LEAVING ROOM!) */}
           {mode === 'results' && (
             <motion.div key="results" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="space-y-6">
               <div className="text-center">
@@ -686,12 +927,10 @@ export default function Home() {
                 <div className="p-4 bg-pink-500/10 border border-pink-500/30 rounded-xl text-center">
                   <span className="text-xs text-pink-300 font-semibold block mb-1">{game.player_a_name}'s Score</span>
                   <span className="text-3xl font-extrabold text-pink-400">{scorePlayerA} / {questions.length}</span>
-                  <span className="text-[10px] text-slate-400 block mt-1">Guesses about {game.player_b_name}</span>
                 </div>
                 <div className="p-4 bg-indigo-500/10 border border-indigo-500/30 rounded-xl text-center">
                   <span className="text-xs text-indigo-300 font-semibold block mb-1">{game.player_b_name}'s Score</span>
                   <span className="text-3xl font-extrabold text-indigo-400">{scorePlayerB} / {questions.length}</span>
-                  <span className="text-[10px] text-slate-400 block mt-1">Guesses about {game.player_a_name}</span>
                 </div>
               </div>
 
@@ -712,27 +951,17 @@ export default function Home() {
                 
                 <div className="flex border-b border-slate-800">
                   <button
-                    onClick={() => {
-                      playSound('click');
-                      setActiveTab('player_a');
-                    }}
+                    onClick={() => { playSound('click'); setActiveTab('player_a'); }}
                     className={`flex-1 py-2 text-xs font-bold transition border-b-2 ${
-                      activeTab === 'player_a'
-                        ? 'border-pink-500 text-pink-400'
-                        : 'border-transparent text-slate-500 hover:text-slate-300'
+                      activeTab === 'player_a' ? 'border-pink-500 text-pink-400' : 'border-transparent text-slate-500 hover:text-slate-300'
                     }`}
                   >
                     {game.player_a_name}'s Guesses
                   </button>
                   <button
-                    onClick={() => {
-                      playSound('click');
-                      setActiveTab('player_b');
-                    }}
+                    onClick={() => { playSound('click'); setActiveTab('player_b'); }}
                     className={`flex-1 py-2 text-xs font-bold transition border-b-2 ${
-                      activeTab === 'player_b'
-                        ? 'border-indigo-500 text-indigo-400'
-                        : 'border-transparent text-slate-500 hover:text-slate-300'
+                      activeTab === 'player_b' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-300'
                     }`}
                   >
                     {game.player_b_name}'s Guesses
@@ -740,10 +969,7 @@ export default function Home() {
                 </div>
 
                 {activeTab === 'player_a' && (
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                    <p className="text-[11px] text-slate-400 italic mb-2">
-                      How well {game.player_a_name} guessed answers about {game.player_b_name}:
-                    </p>
+                  <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
                     {playerAGuessesAboutB.map((res, i) => (
                       <div key={i} className="p-3 bg-slate-950/80 border border-slate-800 rounded-lg text-xs space-y-1">
                         <div className="flex justify-between items-center">
@@ -762,10 +988,7 @@ export default function Home() {
                 )}
 
                 {activeTab === 'player_b' && (
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                    <p className="text-[11px] text-slate-400 italic mb-2">
-                      How well {game.player_b_name} guessed answers about {game.player_a_name}:
-                    </p>
+                  <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
                     {playerBGuessesAboutA.map((res, i) => (
                       <div key={i} className="p-3 bg-slate-950/80 border border-slate-800 rounded-lg text-xs space-y-1">
                         <div className="flex justify-between items-center">
@@ -784,16 +1007,21 @@ export default function Home() {
                 )}
               </div>
 
-              <button
-                onClick={() => {
-                  playSound('click');
-                  setMode('menu');
-                  setGame(null);
-                }}
-                className="w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold text-sm transition"
-              >
-                Play Again / Main Menu
-              </button>
+              {/* STAY IN ROOM ACTION BUTTONS */}
+              <div className="space-y-2">
+                <button
+                  onClick={handleReturnToHub}
+                  className="w-full py-3 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 rounded-xl font-bold text-sm transition shadow-lg shadow-pink-500/20"
+                >
+                  🎮 Pick Another Level or Game (Stay in Room)
+                </button>
+                <button
+                  onClick={handleExitRoom}
+                  className="w-full py-2 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold text-xs text-slate-400 transition"
+                >
+                  🚪 Exit Room
+                </button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
