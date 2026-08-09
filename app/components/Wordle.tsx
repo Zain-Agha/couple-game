@@ -11,13 +11,18 @@ export default function Wordle({ game, role, onReturnToHub }: any) {
   const myWordKey = role === 'player_a' ? 'word_a' : 'word_b';
   const partnerWordKey = role === 'player_a' ? 'word_b' : 'word_a';
   const myGuessesKey = role === 'player_a' ? 'guesses_a' : 'guesses_b';
+  const partnerGuessesKey = role === 'player_a' ? 'guesses_b' : 'guesses_a';
 
   const myWord = state[myWordKey] || '';
   const partnerWord = state[partnerWordKey] || '';
   const myGuesses: string[] = state[myGuessesKey] || [];
+  const partnerGuesses: string[] = state[partnerGuessesKey] || [];
 
   const [inputWord, setInputWord] = useState('');
   const [guessInput, setGuessInput] = useState('');
+
+  // Game is over if someone won OR if someone ran out of 6 guesses!
+  const isGameOver = !!state.winner || myGuesses.length >= 6 || partnerGuesses.length >= 6;
 
   const handleSetSecretWord = async () => {
     if (inputWord.length !== 5) return;
@@ -27,16 +32,26 @@ export default function Wordle({ game, role, onReturnToHub }: any) {
   };
 
   const handleSubmitGuess = async () => {
-    if (guessInput.length !== 5) return;
+    if (guessInput.length !== 5 || isGameOver) return;
     playSound('click');
     const cleanGuess = guessInput.toUpperCase();
     const newGuesses = [...myGuesses, cleanGuess];
 
     let winner = state.winner;
+
+    // 1. Correct guess = Win!
     if (cleanGuess === partnerWord) {
       winner = role === 'player_a' ? game.player_a_name : game.player_b_name;
       playSound('fanfare');
       confetti({ particleCount: 120, spread: 80 });
+    } 
+    // 2. Out of guesses loss detection!
+    else if (newGuesses.length >= 6) {
+      if (partnerGuesses.includes(myWord)) {
+        winner = role === 'player_a' ? game.player_b_name : game.player_a_name;
+      } else {
+        winner = 'Out of Tries';
+      }
     }
 
     const newState = { ...state, [myGuessesKey]: newGuesses, winner };
@@ -53,11 +68,18 @@ export default function Wordle({ game, role, onReturnToHub }: any) {
   return (
     <div className="space-y-4 text-center">
       <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-        <span className="font-bold text-purple-400 text-sm">🔤 Secret Wordle for Couples</span>
+        <span className="font-bold text-purple-400 text-sm">🔤 Secret Wordle</span>
         <button onClick={onReturnToHub} className="text-xs text-slate-400 hover:text-white">
           ← Back to Hub
         </button>
       </div>
+
+      {/* 1. PERSISTENT REMINDER BAR: Shows player their own secret word */}
+      {myWord && (
+        <div className="p-2 bg-purple-500/10 border border-purple-500/30 rounded-lg text-xs text-purple-300 font-semibold">
+          Your Secret Word: <span className="font-mono text-white tracking-widest uppercase font-extrabold">{myWord}</span>
+        </div>
+      )}
 
       {!myWord ? (
         <div className="space-y-3">
@@ -85,9 +107,13 @@ export default function Wordle({ game, role, onReturnToHub }: any) {
         </div>
       ) : (
         <div className="space-y-4">
-          {state.winner ? (
-            <div className="p-3 bg-purple-500/20 border border-purple-500/40 rounded-xl text-purple-300 font-bold text-sm">
-              🏆 {state.winner} Guessed the Secret Word First!
+          {/* 2. END GAME REVEAL BANNER: Triggers when game ends or tries run out */}
+          {isGameOver ? (
+            <div className="p-3 bg-purple-500/20 border border-purple-500/40 rounded-xl text-purple-300 font-bold text-sm space-y-1">
+              <p>{state.winner === 'Out of Tries' ? "⏳ Out of Tries!" : state.winner ? `🏆 ${state.winner} Wins!` : "Game Finished!"}</p>
+              <p className="text-xs text-white">
+                Partner's Secret Word was: <span className="font-mono text-amber-300 tracking-widest font-extrabold">{partnerWord}</span>
+              </p>
             </div>
           ) : (
             <p className="text-xs text-slate-400">Guess partner's 5-letter word ({myGuesses.length}/6 tries):</p>
@@ -119,7 +145,7 @@ export default function Wordle({ game, role, onReturnToHub }: any) {
             ))}
           </div>
 
-          {!state.winner && myGuesses.length < 6 && (
+          {!isGameOver && myGuesses.length < 6 && (
             <div className="space-y-2">
               <input
                 type="text"

@@ -10,6 +10,11 @@ export default function DotsAndBoxes({ game, role, onReturnToHub }: any) {
   const drawnLines: string[] = state.lines || [];
   const claimedBoxes: { [key: string]: string } = state.boxes || {};
 
+  // 8x8 Boxes = 9x9 Dots (81 Dots Total, 64 Boxes Total)
+  const BOX_COUNT = 8;
+  const SPACING = 36; // Scaled for mobile screens
+  const OFFSET = 15;  // Margin offset
+
   const handleDrawLine = async (lineId: string) => {
     if (drawnLines.includes(lineId) || state.winner || state.turn !== role) return;
     playSound('click');
@@ -18,8 +23,9 @@ export default function DotsAndBoxes({ game, role, onReturnToHub }: any) {
     const newBoxes = { ...claimedBoxes };
     let boxClaimed = false;
 
-    for (let r = 0; r < 3; r++) {
-      for (let c = 0; c < 3; c++) {
+    // Check all 64 boxes (8x8 grid)
+    for (let r = 0; r < BOX_COUNT; r++) {
+      for (let c = 0; c < BOX_COUNT; c++) {
         const boxKey = `${r}_${c}`;
         if (!newBoxes[boxKey]) {
           const top = `h_${r}_${c}`;
@@ -36,7 +42,7 @@ export default function DotsAndBoxes({ game, role, onReturnToHub }: any) {
     }
 
     let winner = null;
-    if (Object.keys(newBoxes).length === 9) {
+    if (Object.keys(newBoxes).length === BOX_COUNT * BOX_COUNT) {
       const p1Score = Object.values(newBoxes).filter((v) => v === game.player_a_name).length;
       const p2Score = Object.values(newBoxes).filter((v) => v === game.player_b_name).length;
       if (p1Score > p2Score) winner = game.player_a_name;
@@ -47,6 +53,7 @@ export default function DotsAndBoxes({ game, role, onReturnToHub }: any) {
       confetti({ particleCount: 120, spread: 80 });
     }
 
+    // Player keeps turn if they completed a box!
     const nextTurn = boxClaimed ? state.turn : state.turn === 'player_a' ? 'player_b' : 'player_a';
     const newState = { lines: newLines, boxes: newBoxes, turn: nextTurn, winner };
 
@@ -59,80 +66,173 @@ export default function DotsAndBoxes({ game, role, onReturnToHub }: any) {
     await supabase.from('games').update({ dotsandboxes_state: resetState }).eq('id', game.id);
   };
 
+  const p1Score = Object.values(claimedBoxes).filter((v) => v === game.player_a_name).length;
+  const p2Score = Object.values(claimedBoxes).filter((v) => v === game.player_b_name).length;
+  const totalClaimed = Object.keys(claimedBoxes).length;
+
   return (
     <div className="space-y-4 text-center">
       <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-        <span className="font-bold text-amber-400 text-sm">⏹️ Dots & Boxes</span>
+        <span className="font-bold text-amber-400 text-sm">⏹️ 8x8 Dots & Boxes (64 Boxes)</span>
         <button onClick={onReturnToHub} className="text-xs text-slate-400 hover:text-white">
           ← Back to Hub
         </button>
       </div>
 
+      {/* PROMINENT LIVE SCOREBOARD */}
+      <div className="grid grid-cols-2 gap-3 p-3 bg-slate-950 border border-slate-800 rounded-xl text-center">
+        <div className="p-2 bg-pink-500/10 border border-pink-500/30 rounded-lg">
+          <span className="text-xs text-pink-300 font-semibold block truncate">{game.player_a_name}</span>
+          <span className="text-2xl font-extrabold text-pink-400">{p1Score} <span className="text-[10px] text-slate-400 font-normal">Boxes</span></span>
+        </div>
+        <div className="p-2 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+          <span className="text-xs text-indigo-300 font-semibold block truncate">{game.player_b_name}</span>
+          <span className="text-2xl font-extrabold text-indigo-400">{p2Score} <span className="text-[10px] text-slate-400 font-normal">Boxes</span></span>
+        </div>
+      </div>
+
       {state.winner ? (
         <div className="p-3 bg-amber-500/20 border border-amber-500/40 rounded-xl text-amber-300 font-bold text-sm">
-          🏆 {state.winner === 'Tie' ? "Tie Game!" : `${state.winner} Completed the Most Boxes!`}
+          🏆 {state.winner === 'Tie' ? "It's a Tie!" : `${state.winner} Wins with Most Boxes! 🎉`}
         </div>
       ) : (
-        <p className="text-xs text-slate-400">
-          Turn: <strong className="text-slate-200">{state.turn === role ? 'YOUR TURN! Tap a line ▼' : 'Waiting for partner...'}</strong>
-        </p>
+        <div className="flex justify-between items-center text-xs text-slate-400 px-1">
+          <span>{64 - totalClaimed} Boxes Remaining</span>
+          <span>
+            Turn: <strong className={state.turn === 'player_a' ? 'text-pink-400' : 'text-indigo-400'}>
+              {state.turn === role ? 'YOUR TURN! ▼' : `Waiting for ${state.turn === 'player_a' ? game.player_a_name : game.player_b_name}...`}
+            </strong>
+          </span>
+        </div>
       )}
 
-      <div className="max-w-[260px] mx-auto p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
-        {[0, 1, 2].map((r) => (
-          <div key={r} className="space-y-2">
-            <div className="flex justify-between items-center">
-              {[0, 1, 2].map((c) => {
-                const lineId = `h_${r}_${c}`;
-                const drawn = drawnLines.includes(lineId);
-                return (
-                  <div key={c} className="flex items-center flex-1">
-                    <div className="w-3 h-3 bg-amber-400 rounded-full" />
-                    <button
-                      onClick={() => handleDrawLine(lineId)}
-                      disabled={drawn || !!state.winner || state.turn !== role}
-                      className={`h-2 flex-1 rounded transition ${
-                        drawn ? 'bg-amber-400' : 'bg-slate-800 hover:bg-amber-400/50'
-                      }`}
-                    />
-                  </div>
-                );
-              })}
-              <div className="w-3 h-3 bg-amber-400 rounded-full" />
-            </div>
+      {/* 8x8 VECTOR SVG BOARD (64 Boxes, 81 Dots) */}
+      <div className="flex justify-center p-2 bg-slate-950 border border-slate-800 rounded-2xl max-w-[330px] mx-auto shadow-inner">
+        <svg width="318" height="318" viewBox="0 0 318 318" className="select-none">
+          {/* 1. Claimed Boxes */}
+          {Array.from({ length: BOX_COUNT }).map((_, r) =>
+            Array.from({ length: BOX_COUNT }).map((_, c) => {
+              const boxKey = `${r}_${c}`;
+              const owner = claimedBoxes[boxKey];
+              if (!owner) return null;
 
-            {r < 3 && (
-              <div className="flex justify-between items-center">
-                {[0, 1, 2, 3].map((c) => {
-                  const lineId = `v_${r}_${c}`;
-                  const drawn = drawnLines.includes(lineId);
-                  const boxOwner = c < 3 ? claimedBoxes[`${r}_${c}`] : null;
+              const isP1 = owner === game.player_a_name;
+              const x = OFFSET + c * SPACING;
+              const y = OFFSET + r * SPACING;
 
-                  return (
-                    <div key={c} className="flex items-center flex-1 justify-between">
-                      <button
-                        onClick={() => handleDrawLine(lineId)}
-                        disabled={drawn || !!state.winner || state.turn !== role}
-                        className={`w-2 h-10 rounded transition ${
-                          drawn ? 'bg-amber-400' : 'bg-slate-800 hover:bg-amber-400/50'
-                        }`}
-                      />
-                      {c < 3 && (
-                        <div className="flex-1 h-10 flex items-center justify-center text-[10px] font-bold text-amber-300">
-                          {boxOwner ? boxOwner.substring(0, 3) : ''}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ))}
+              return (
+                <g key={boxKey}>
+                  <rect
+                    x={x}
+                    y={y}
+                    width={SPACING}
+                    height={SPACING}
+                    fill={isP1 ? '#ec4899' : '#818cf8'}
+                    fillOpacity={0.35}
+                    rx={3}
+                  />
+                  <text
+                    x={x + SPACING / 2}
+                    y={y + SPACING / 2 + 3}
+                    fill={isP1 ? '#f472b6' : '#a5b4fc'}
+                    fontSize="9"
+                    fontWeight="bold"
+                    textAnchor="middle"
+                  >
+                    {owner.substring(0, 2).toUpperCase()}
+                  </text>
+                </g>
+              );
+            })
+          )}
+
+          {/* 2. Horizontal Lines */}
+          {Array.from({ length: BOX_COUNT + 1 }).map((_, r) =>
+            Array.from({ length: BOX_COUNT }).map((_, c) => {
+              const lineId = `h_${r}_${c}`;
+              const drawn = drawnLines.includes(lineId);
+              const x1 = OFFSET + c * SPACING;
+              const y1 = OFFSET + r * SPACING;
+              const x2 = x1 + SPACING;
+
+              return (
+                <g key={lineId}>
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y1}
+                    stroke={drawn ? '#f59e0b' : '#334155'}
+                    strokeWidth={drawn ? '3.5' : '1.5'}
+                    strokeLinecap="round"
+                  />
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y1}
+                    stroke="transparent"
+                    strokeWidth="12"
+                    className="cursor-pointer"
+                    onClick={() => handleDrawLine(lineId)}
+                  />
+                </g>
+              );
+            })
+          )}
+
+          {/* 3. Vertical Lines */}
+          {Array.from({ length: BOX_COUNT }).map((_, r) =>
+            Array.from({ length: BOX_COUNT + 1 }).map((_, c) => {
+              const lineId = `v_${r}_${c}`;
+              const drawn = drawnLines.includes(lineId);
+              const x1 = OFFSET + c * SPACING;
+              const y1 = OFFSET + r * SPACING;
+              const y2 = y1 + SPACING;
+
+              return (
+                <g key={lineId}>
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={x1}
+                    y2={y2}
+                    stroke={drawn ? '#f59e0b' : '#334155'}
+                    strokeWidth={drawn ? '3.5' : '1.5'}
+                    strokeLinecap="round"
+                  />
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={x1}
+                    y2={y2}
+                    stroke="transparent"
+                    strokeWidth="12"
+                    className="cursor-pointer"
+                    onClick={() => handleDrawLine(lineId)}
+                  />
+                </g>
+              );
+            })
+          )}
+
+          {/* 4. Dots (81 Golden Circles) */}
+          {Array.from({ length: BOX_COUNT + 1 }).map((_, r) =>
+            Array.from({ length: BOX_COUNT + 1 }).map((_, c) => (
+              <circle
+                key={`dot_${r}_${c}`}
+                cx={OFFSET + c * SPACING}
+                cy={OFFSET + r * SPACING}
+                r="3.5"
+                fill="#f59e0b"
+              />
+            ))
+          )}
+        </svg>
       </div>
 
       <button onClick={handleResetDots} className="w-full py-2 bg-slate-800 text-xs rounded-xl font-bold">
-        Reset Game 🔄
+        Reset Board 🔄
       </button>
     </div>
   );

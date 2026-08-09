@@ -12,10 +12,12 @@ export default function Battleship({ game, role, onReturnToHub }: any) {
   const myHeartsKey = role === 'player_a' ? 'p1_hearts' : 'p2_hearts';
   const partnerHeartsKey = role === 'player_a' ? 'p2_hearts' : 'p1_hearts';
   const myGuessesKey = role === 'player_a' ? 'p1_guesses' : 'p2_guesses';
+  const partnerGuessesKey = role === 'player_a' ? 'p2_guesses' : 'p1_guesses';
 
   const myHearts: number[] = state[myHeartsKey] || [];
   const partnerHearts: number[] = state[partnerHeartsKey] || [];
   const myGuesses: number[] = state[myGuessesKey] || [];
+  const partnerGuesses: number[] = state[partnerGuessesKey] || [];
 
   const setupComplete = myHearts.length === 3;
   const partnerSetupComplete = partnerHearts.length === 3;
@@ -63,7 +65,7 @@ export default function Battleship({ game, role, onReturnToHub }: any) {
   return (
     <div className="space-y-4 text-center">
       <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-        <span className="font-bold text-rose-400 text-sm">🚢 Couples Battleship</span>
+        <span className="font-bold text-rose-400 text-sm">🚢 Battleship</span>
         <button onClick={onReturnToHub} className="text-xs text-slate-400 hover:text-white">
           ← Back to Hub
         </button>
@@ -96,8 +98,9 @@ export default function Battleship({ game, role, onReturnToHub }: any) {
       ) : (
         <div className="space-y-4">
           {state.winner ? (
-            <div className="p-3 bg-rose-500/20 border border-rose-500/40 rounded-xl text-rose-300 font-bold text-sm">
-              🏆 {state.winner} Found All 3 Hearts First!
+            <div className="p-3 bg-rose-500/20 border border-rose-500/40 rounded-xl text-rose-300 font-bold text-sm space-y-1">
+              <p>🏆 {state.winner} Found All 3 Hearts First!</p>
+              <p className="text-[11px] text-amber-300">Partner's un-found hearts are revealed in gold 💕 below!</p>
             </div>
           ) : (
             <p className="text-xs text-slate-400">
@@ -105,28 +108,36 @@ export default function Battleship({ game, role, onReturnToHub }: any) {
             </p>
           )}
 
-          {/* 5x5 Guess Grid */}
-          <div className="grid grid-cols-5 gap-2 max-w-[260px] mx-auto">
-            {Array.from({ length: 25 }).map((_, idx) => {
-              const guessed = myGuesses.includes(idx);
-              const isHit = partnerHearts.includes(idx) && guessed;
-              return (
-                <button
-                  key={idx}
-                  onClick={() => handleGuessTile(idx)}
-                  disabled={guessed || !!state.winner || state.turn !== role}
-                  className={`h-10 rounded-lg text-lg flex items-center justify-center border transition ${
-                    isHit
-                      ? 'bg-rose-500 border-rose-400 text-white font-bold'
-                      : guessed
-                      ? 'bg-slate-950 border-slate-800 text-slate-600'
-                      : 'bg-slate-900 border-slate-800 hover:border-rose-500/50'
-                  }`}
-                >
-                  {isHit ? '💖' : guessed ? '❌' : ''}
-                </button>
-              );
-            })}
+          {/* ATTACK GRID (Your guesses on partner's fleet) */}
+          <div className="space-y-1">
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Your Attack Grid:</span>
+            <div className="grid grid-cols-5 gap-2 max-w-[260px] mx-auto">
+              {Array.from({ length: 25 }).map((_, idx) => {
+                const guessed = myGuesses.includes(idx);
+                const isPartnerHeart = partnerHearts.includes(idx);
+                const isHit = isPartnerHeart && guessed;
+                const isRevealedOnLoss = state.winner && isPartnerHeart && !guessed;
+
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => handleGuessTile(idx)}
+                    disabled={guessed || !!state.winner || state.turn !== role}
+                    className={`h-10 rounded-lg text-lg flex items-center justify-center border transition ${
+                      isHit
+                        ? 'bg-rose-500 border-rose-400 text-white font-bold'
+                        : isRevealedOnLoss
+                        ? 'bg-amber-500/30 border-amber-500 text-amber-300 font-bold animate-pulse'
+                        : guessed
+                        ? 'bg-slate-950 border-slate-800 text-slate-600'
+                        : 'bg-slate-900 border-slate-800 hover:border-rose-500/50'
+                    }`}
+                  >
+                    {isHit ? '💥' : isRevealedOnLoss ? '💕' : guessed ? '❌' : ''}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <button onClick={handleResetBattleship} className="w-full py-2 bg-slate-800 text-xs rounded-xl font-bold">
