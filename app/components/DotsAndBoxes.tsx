@@ -10,6 +10,9 @@ export default function DotsAndBoxes({ game, role, onReturnToHub }: any) {
   const drawnLines: string[] = state.lines || [];
   const claimedBoxes: { [key: string]: string } = state.boxes || {};
 
+  // Identify the last line drawn (most recent move!)
+  const lastDrawnLine = drawnLines.length > 0 ? drawnLines[drawnLines.length - 1] : null;
+
   // 8x8 Boxes = 9x9 Dots (81 Dots Total, 64 Boxes Total)
   const BOX_COUNT = 8;
   const SPACING = 36; // Scaled for mobile screens
@@ -106,7 +109,7 @@ export default function DotsAndBoxes({ game, role, onReturnToHub }: any) {
         </div>
       )}
 
-      {/* 8x8 VECTOR SVG BOARD (64 Boxes, 81 Dots) */}
+      {/* 8x8 VECTOR SVG BOARD */}
       <div className="flex justify-center p-2 bg-slate-950 border border-slate-800 rounded-2xl max-w-[330px] mx-auto shadow-inner">
         <svg width="318" height="318" viewBox="0 0 318 318" className="select-none">
           {/* 1. Claimed Boxes */}
@@ -151,21 +154,39 @@ export default function DotsAndBoxes({ game, role, onReturnToHub }: any) {
             Array.from({ length: BOX_COUNT }).map((_, c) => {
               const lineId = `h_${r}_${c}`;
               const drawn = drawnLines.includes(lineId);
+              const isLastMove = lineId === lastDrawnLine; // Check if this is the last line drawn
               const x1 = OFFSET + c * SPACING;
               const y1 = OFFSET + r * SPACING;
               const x2 = x1 + SPACING;
 
               return (
                 <g key={lineId}>
+                  {/* Flashing Red Underglow for Last Move */}
+                  {isLastMove && (
+                    <line
+                      x1={x1}
+                      y1={y1}
+                      x2={x2}
+                      y2={y1}
+                      stroke="#ef4444"
+                      strokeWidth="8"
+                      strokeOpacity="0.6"
+                      strokeLinecap="round"
+                      className="animate-pulse"
+                    />
+                  )}
+                  {/* Visible Line */}
                   <line
                     x1={x1}
                     y1={y1}
                     x2={x2}
                     y2={y1}
-                    stroke={drawn ? '#f59e0b' : '#334155'}
-                    strokeWidth={drawn ? '3.5' : '1.5'}
+                    stroke={isLastMove ? '#ef4444' : drawn ? '#f59e0b' : '#334155'}
+                    strokeWidth={isLastMove ? '4.5' : drawn ? '3.5' : '1.5'}
                     strokeLinecap="round"
+                    className={isLastMove ? 'animate-pulse' : ''}
                   />
+                  {/* Touch Zone */}
                   <line
                     x1={x1}
                     y1={y1}
@@ -186,21 +207,39 @@ export default function DotsAndBoxes({ game, role, onReturnToHub }: any) {
             Array.from({ length: BOX_COUNT + 1 }).map((_, c) => {
               const lineId = `v_${r}_${c}`;
               const drawn = drawnLines.includes(lineId);
+              const isLastMove = lineId === lastDrawnLine; // Check if this is the last line drawn
               const x1 = OFFSET + c * SPACING;
               const y1 = OFFSET + r * SPACING;
               const y2 = y1 + SPACING;
 
               return (
                 <g key={lineId}>
+                  {/* Flashing Red Underglow for Last Move */}
+                  {isLastMove && (
+                    <line
+                      x1={x1}
+                      y1={y1}
+                      x2={x1}
+                      y2={y2}
+                      stroke="#ef4444"
+                      strokeWidth="8"
+                      strokeOpacity="0.6"
+                      strokeLinecap="round"
+                      className="animate-pulse"
+                    />
+                  )}
+                  {/* Visible Line */}
                   <line
                     x1={x1}
                     y1={y1}
                     x2={x1}
                     y2={y2}
-                    stroke={drawn ? '#f59e0b' : '#334155'}
-                    strokeWidth={drawn ? '3.5' : '1.5'}
+                    stroke={isLastMove ? '#ef4444' : drawn ? '#f59e0b' : '#334155'}
+                    strokeWidth={isLastMove ? '4.5' : drawn ? '3.5' : '1.5'}
                     strokeLinecap="round"
+                    className={isLastMove ? 'animate-pulse' : ''}
                   />
+                  {/* Touch Zone */}
                   <line
                     x1={x1}
                     y1={y1}

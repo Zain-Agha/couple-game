@@ -12,6 +12,7 @@ import TruthOrDare from './components/TruthOrDare';
 import DotsAndBoxes from './components/DotsAndBoxes';
 import NamePlace from './components/NamePlace';
 import WordChain from './components/WordChain';
+import BirthdayVault from './components/BirthdayVault';
 
 export const LEVEL_NAMES: { [key: number]: string } = {
   1: 'The Basics', 2: 'Food & Cravings', 3: 'Hobbies & Chill', 4: 'Daily Routines', 5: 'Pet Peeves',
@@ -27,7 +28,7 @@ const MODE_CONFIGS: { [key: string]: { icon: string; title: string; desc: string
   kids: { icon: '🎈', title: 'Kids & Family Safe', desc: 'Cartoons, Superpowers & Fun', badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
 };
 
-// INLINED ROOM HUB COMPONENT (NO SEPARATE FILE NEEDED!)
+// INLINED ROOM HUB COMPONENT
 function RoomHub({
   game,
   role,
@@ -43,6 +44,7 @@ function RoomHub({
   onStartDotsAndBoxes,
   onStartNamePlace,
   onStartWordChain,
+  onStartBirthdayVault,
   onExitRoom,
 }: any) {
   const modeKey = game.relationship_mode || 'couples';
@@ -82,6 +84,18 @@ function RoomHub({
 
       {game.player_a_name && game.player_b_name ? (
         <div className="space-y-4">
+          {/* SECRET CELEBRATION VAULT BUTTON */}
+          <button
+            onClick={onStartBirthdayVault}
+            className="w-full p-4 bg-gradient-to-r from-amber-500/20 via-pink-500/20 to-amber-500/20 border border-amber-500/50 hover:border-amber-400 rounded-xl text-left flex justify-between items-center transition group shadow-lg shadow-amber-500/10"
+          >
+            <div>
+              <span className="font-extrabold text-amber-300 text-sm block">🎁 Secret Celebration Vault (Password Protected)</span>
+              <span className="text-[10px] text-slate-300 block">Private message vault & compliment generator 🔑</span>
+            </div>
+            <span className="text-lg group-hover:scale-110 transition">🔐</span>
+          </button>
+
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Arcade Games (10 Games):</h3>
 
           {/* QUIZ SECTION */}
@@ -306,6 +320,7 @@ export default function Home() {
           else if (updatedGame.status === 'playing_dotsandboxes') setMode('dotsandboxes');
           else if (updatedGame.status === 'playing_nameplace') setMode('nameplace');
           else if (updatedGame.status === 'playing_wordchain') setMode('wordchain');
+          else if (updatedGame.status === 'playing_birthdayvault') setMode('birthdayvault');
         }
       )
       .subscribe();
@@ -454,6 +469,11 @@ export default function Home() {
     playSound('click');
     const initState = { words: [], turn: 'player_a', winner: null };
     await supabase.from('games').update({ status: 'playing_wordchain', current_game_type: 'wordchain', wordchain_state: initState }).eq('id', game.id);
+  };
+
+  const handleStartBirthdayVault = async () => {
+    playSound('click');
+    await supabase.from('games').update({ status: 'playing_birthdayvault', current_game_type: 'birthdayvault' }).eq('id', game.id);
   };
 
   const handleReturnToHub = async () => {
@@ -759,6 +779,7 @@ export default function Home() {
               onStartDotsAndBoxes={handleStartDotsAndBoxes}
               onStartNamePlace={handleStartNamePlace}
               onStartWordChain={handleStartWordChain}
+              onStartBirthdayVault={handleStartBirthdayVault}
               onExitRoom={handleExitRoom}
             />
           )}
@@ -770,6 +791,7 @@ export default function Home() {
           {mode === 'dotsandboxes' && <DotsAndBoxes game={game} role={role} onReturnToHub={handleReturnToHub} />}
           {mode === 'nameplace' && <NamePlace game={game} role={role} onReturnToHub={handleReturnToHub} />}
           {mode === 'wordchain' && <WordChain game={game} role={role} onReturnToHub={handleReturnToHub} />}
+          {mode === 'birthdayvault' && <BirthdayVault onReturnToHub={handleReturnToHub} />}
 
           {mode === 'connect4' && game?.bingo_state && (
             <motion.div key="connect4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4 text-center">

@@ -19,18 +19,18 @@ export default function WordChain({ game, role, onReturnToHub }: any) {
   const categoryKey = state.category || 'general';
 
   const [wordInput, setWordInput] = useState('');
-  const [timer, setTimer] = useState(15);
+  const [timer, setTimer] = useState(45); // UPDATED: 45 Seconds
   const [validating, setValidating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const lastWord = words[words.length - 1] || '';
   const requiredChar = lastWord ? lastWord[lastWord.length - 1].toUpperCase() : '';
 
-  // 15-Second Turn Timer
+  // 45-Second Turn Timer
   useEffect(() => {
     if (state.winner || !state.turn) return;
 
-    setTimer(15);
+    setTimer(45); // Reset to 45 seconds on every turn
     const interval = setInterval(() => {
       setTimer((prev) => {
         if (prev <= 1) {
@@ -133,7 +133,7 @@ export default function WordChain({ game, role, onReturnToHub }: any) {
         </div>
         <div className="text-right">
           <span className="text-[10px] text-slate-500 uppercase font-bold block">Turn Timer</span>
-          <span className={`text-lg font-mono font-extrabold ${timer <= 5 ? 'text-rose-400 animate-pulse' : 'text-teal-400'}`}>
+          <span className={`text-lg font-mono font-extrabold ${timer <= 10 ? 'text-rose-400 animate-pulse' : 'text-teal-400'}`}>
             ⏱️ {timer}s
           </span>
         </div>
