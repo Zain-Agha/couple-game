@@ -346,6 +346,13 @@ export default function Home() {
     setLoading(true);
     setError('');
 
+    // Trigger automatic background cleanup of abandoned rooms older than 2 hours!
+    try {
+      await supabase.rpc('cleanup_old_games');
+    } catch (e) {
+      console.log('Cleanup trigger complete');
+    }
+
     const shortCode = generateShortCode();
 
     const { data, error } = await supabase
