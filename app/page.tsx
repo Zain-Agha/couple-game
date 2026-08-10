@@ -873,6 +873,7 @@ export default function Home() {
             </motion.div>
           )}
 
+          {/* QUIZ MODE WITH BACK TO HUB BUTTON */}
           {mode === 'quiz' && questions.length > 0 && (
             <motion.div key="quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               {evaluating ? (
@@ -886,12 +887,18 @@ export default function Home() {
                   <div className="text-4xl animate-bounce">⏳</div>
                   <h3 className="text-lg font-bold text-slate-200">Answers Submitted!</h3>
                   <p className="text-sm text-slate-400">Waiting for your partner to finish...</p>
+                  <button onClick={handleReturnToHub} className="py-2 px-4 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs text-slate-300 mt-4 transition">
+                    ← Back to Hub
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-6">
                   <div className="space-y-2">
-                    <div className="flex justify-between items-center text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <div className="flex justify-between items-center border-b border-slate-800 pb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
                       <span>Question {currentQIndex + 1} / {questions.length}</span>
+                      <button onClick={handleReturnToHub} className="text-xs text-slate-400 hover:text-white transition">
+                        ← Back to Hub
+                      </button>
                     </div>
                     <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800">
                       <motion.div className="bg-gradient-to-r from-pink-500 to-rose-500 h-full" animate={{ width: `${((currentQIndex + 1) / questions.length) * 100}%` }} transition={{ duration: 0.3 }} />
