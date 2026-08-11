@@ -20,6 +20,10 @@ export default function RoomHub({
   onStartTicTacToe,
   onStartBattleship,
   onStartWordle,
+  onStartTruthOrDare,
+  onStartDotsAndBoxes,
+  onStartNamePlace,
+  onStartWordChain,
   onExitRoom,
 }: any) {
   const modeKey = game.relationship_mode || 'couples';
@@ -59,14 +63,13 @@ export default function RoomHub({
 
       {game.player_a_name && game.player_b_name ? (
         <div className="space-y-4">
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Arcade Activities:</h3>
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Arcade Games (10 Games):</h3>
 
-          {/* QUIZ SELECTOR SECTION */}
+          {/* QUIZ SECTION */}
           <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl text-left space-y-3">
             <span className="font-bold text-pink-400 text-sm block">🧠 1. {modeInfo.title} Quiz</span>
-            
             {modeKey === 'couples' ? (
-              <div className="grid grid-cols-3 gap-2 max-h-32 overflow-y-auto pr-1">
+              <div className="grid grid-cols-3 gap-2 max-h-28 overflow-y-auto pr-1">
                 {Object.entries(LEVEL_NAMES).map(([lvlStr, title]) => {
                   const lvlNum = Number(lvlStr);
                   return (
@@ -91,61 +94,60 @@ export default function RoomHub({
             )}
           </div>
 
-          {/* 5-GAME ARCADE GRID LAYOUT */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={onStartWouldYouRather}
-              className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left flex flex-col justify-between transition group"
-            >
-              <span className="text-xl mb-1">🤖</span>
-              <div>
-                <span className="font-bold text-amber-400 text-xs block">Would You Rather?</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Groq AI Dilemma Engine</span>
-              </div>
+          {/* 9-GAME ARCADE GRID */}
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={onStartTruthOrDare} className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left">
+              <span className="text-lg block mb-1">🔥</span>
+              <span className="font-bold text-rose-400 text-xs block">Truth or Dare</span>
+              <span className="text-[9px] text-slate-400 block">AI Prompts</span>
             </button>
 
-            <button
-              onClick={onStartConnect4}
-              className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left flex flex-col justify-between transition group"
-            >
-              <span className="text-xl mb-1">🔴🔵</span>
-              <div>
-                <span className="font-bold text-emerald-400 text-xs block">Connect 4</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Red vs Blue Drop Battle</span>
-              </div>
+            <button onClick={onStartWouldYouRather} className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left">
+              <span className="text-lg block mb-1">🤖</span>
+              <span className="font-bold text-amber-400 text-xs block">Would You Rather</span>
+              <span className="text-[9px] text-slate-400 block">AI Dilemmas</span>
             </button>
 
-            <button
-              onClick={onStartTicTacToe}
-              className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left flex flex-col justify-between transition group"
-            >
-              <span className="text-xl mb-1">❌⭕</span>
-              <div>
-                <span className="font-bold text-indigo-400 text-xs block">Tic-Tac-Toe</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Classic X vs O</span>
-              </div>
+            <button onClick={onStartConnect4} className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left">
+              <span className="text-lg block mb-1">🔴🔵</span>
+              <span className="font-bold text-emerald-400 text-xs block">Connect 4</span>
+              <span className="text-[9px] text-slate-400 block">4-in-a-Row</span>
             </button>
 
-            <button
-              onClick={onStartBattleship}
-              className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left flex flex-col justify-between transition group"
-            >
-              <span className="text-xl mb-1">🚢</span>
-              <div>
-                <span className="font-bold text-rose-400 text-xs block">Battleship</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Hide & Find 3 Targets</span>
-              </div>
+            <button onClick={onStartTicTacToe} className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left">
+              <span className="text-lg block mb-1">❌⭕</span>
+              <span className="font-bold text-indigo-400 text-xs block">Tic-Tac-Toe</span>
+              <span className="text-[9px] text-slate-400 block">X vs O</span>
             </button>
 
-            <button
-              onClick={onStartWordle}
-              className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left flex flex-col justify-between col-span-2 transition group"
-            >
-              <span className="text-xl mb-1">🔤</span>
-              <div>
-                <span className="font-bold text-purple-400 text-xs block">Secret Wordle</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Pick a 5-letter secret word for your partner to guess!</span>
-              </div>
+            <button onClick={onStartBattleship} className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left">
+              <span className="text-lg block mb-1">🚢</span>
+              <span className="font-bold text-rose-300 text-xs block">Battleship</span>
+              <span className="text-[9px] text-slate-400 block">Find Hearts</span>
+            </button>
+
+            <button onClick={onStartWordle} className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left">
+              <span className="text-lg block mb-1">🔤</span>
+              <span className="font-bold text-purple-400 text-xs block">Secret Wordle</span>
+              <span className="text-[9px] text-slate-400 block">Guess Word</span>
+            </button>
+
+            <button onClick={onStartDotsAndBoxes} className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left">
+              <span className="text-lg block mb-1">⏹️</span>
+              <span className="font-bold text-amber-300 text-xs block">Dots & Boxes</span>
+              <span className="text-[9px] text-slate-400 block">Box Claim</span>
+            </button>
+
+            <button onClick={onStartNamePlace} className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left">
+              <span className="text-lg block mb-1">📝</span>
+              <span className="font-bold text-cyan-400 text-xs block">Name Place...</span>
+              <span className="text-[9px] text-slate-400 block">Letter Race</span>
+            </button>
+
+            <button onClick={onStartWordChain} className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-left col-span-2">
+              <span className="text-lg block mb-1">🔗</span>
+              <span className="font-bold text-teal-400 text-xs block">Word Chain (Shiritori)</span>
+              <span className="text-[9px] text-slate-400 block">Connect words by last letter!</span>
             </button>
           </div>
 
